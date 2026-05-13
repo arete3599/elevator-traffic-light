@@ -35,20 +35,38 @@ export default async function handler(req, res) {
     });
   }
 
-  // 카카오 키워드 검색 — 지하철역 카테고리(SW8) 우선
-  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}&category_group_code=SW8&size=1`;
+  // 1차: 지하철역 카테고리(SW8) 우선 검색
+  // 2차(폴백): 일부 역(강남역·창동역·노원역 등)은 SW8 카테고리에 없거나 다르게 등록되어 있음.
+  //          카테고리 없이 일반 키워드로 재검색 후 "역" 포함 결과를 우선 선택.
+  const baseUrl = 'https://dapi.kakao.com/v2/local/search/keyword.json';
+  const headers = { 'Authorization': `KakaoAK ${KAKAO_KEY}` };
+
+  async function kakaoSearch(qs) {
+    const r = await fetch(`${baseUrl}?${qs}`, { headers });
+    if (!r.ok) throw new Error(`Kakao HTTP ${r.status}`);
+    return r.json();
+  }
 
   try {
-    const r = await fetch(url, {
-      headers: { 'Authorization': `KakaoAK ${KAKAO_KEY}` },
-    });
-    const data = await r.json();
+    // 1차 — SW8 카테고리 (지하철역만)
+    let data = await kakaoSearch(`query=${encodeURIComponent(query)}&category_group_code=SW8&size=1`);
+    let doc = data.documents?.[0];
+    let matchedBy = 'SW8';
 
-    // 우리 앱이 쓰기 좋도록 간소화된 응답
-    const doc = data.documents?.[0];
+    // 2차 — 카테고리 없이 일반 검색, "역" 포함 결과 우선
+    if (!doc) {
+      data = await kakaoSearch(`query=${encodeURIComponent(query)}&size=10`);
+      const docs = data.documents || [];
+      doc = docs.find(d => d.place_name && d.place_name.includes('역'))
+         || docs.find(d => (d.category_name || '').includes('지하철'))
+         || docs[0];
+      matchedBy = doc ? 'general' : null;
+    }
+
     if (!doc) {
       return res.status(404).json({ error: 'No match', query });
     }
+
     return res.status(200).json({
       query,
       name: doc.place_name,
@@ -56,6 +74,7 @@ export default async function handler(req, res) {
       category: doc.category_name,
       lat: parseFloat(doc.y),
       lng: parseFloat(doc.x),
+      matchedBy,
     });
   } catch (e) {
     return res.status(502).json({ error: 'Geocode failed', message: e.message });
