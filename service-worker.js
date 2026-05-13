@@ -7,7 +7,8 @@
  *   - 공공 API (프록시 경유):    Network-First, 실패 시 캐시 폴백
  */
 
-const CACHE_VERSION = 'v1.0.0';
+// ⚠ 코드 변경 후 반드시 이 버전 번호를 올려야 사용자 PWA가 새 SW를 받습니다
+const CACHE_VERSION = 'v1.1.0';
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 const CDN_CACHE = `cdn-libs-${CACHE_VERSION}`;
 const TILE_CACHE = `osm-tiles-${CACHE_VERSION}`;
@@ -87,12 +88,22 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 4) 로컬 프록시 경유 공공 API: Network-First
-  if (url.pathname.startsWith('/api/proxy')) {
+  if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(API_CACHE, req));
     return;
   }
 
-  // 5) 앱 셸 (HTML, 아이콘, manifest): Cache-First
+  // 5) HTML 문서: Network-First (새 버전 즉시 반영, 오프라인 시 캐시 폴백)
+  // 이게 Cache-First면 사용자가 옛 HTML에 영원히 갇힘
+  const isHtmlDoc = req.destination === 'document'
+                  || url.pathname === '/'
+                  || url.pathname.endsWith('.html');
+  if (isHtmlDoc) {
+    event.respondWith(networkFirst(APP_SHELL_CACHE, req));
+    return;
+  }
+
+  // 6) 그 외 앱 셸 (아이콘, manifest, JS): Cache-First
   event.respondWith(cacheFirst(APP_SHELL_CACHE, req));
 });
 
