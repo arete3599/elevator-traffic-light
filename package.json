@@ -1,0 +1,10 @@
+{
+  "name": "elevator-traffic-light",
+  "version": "1.0.0",
+  "description": "전국 운수시설 승강기 운행정보 시민 안내 PWA",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  }
+}
