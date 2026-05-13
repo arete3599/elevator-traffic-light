@@ -157,6 +157,11 @@
   .sheet-fault-reason strong{font-weight:700;display:block;margin-bottom:3px;color:var(--fault)}
   .sheet-distance{display:inline-block;margin-top:10px;padding:4px 10px;background:rgba(25,118,210,.1);color:var(--primary);border-radius:12px;font-size:11px;font-weight:500}
   .sheet-updated{margin-top:12px;font-size:11px;color:var(--text-light);text-align:center}
+  .ext-map-btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .ext-map-btn{flex:1;min-width:120px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 12px;background:var(--primary);color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;transition:opacity .15s}
+  .ext-map-btn:hover{opacity:.85}
+  .ext-map-btn.naver{background:#03c75a}
+  .ext-map-btn.kakao{background:#fee500;color:#3a1d1d}
 
   .marker-pin{
     width:20px;height:20px;border-radius:50%;border:3px solid #fff;
@@ -421,8 +426,8 @@ const DATA_SOURCES = {
         throw new Error(`서울 API 오류 [${code}] ${msg}`);
       }
 
-      // 카카오 키가 있으면 일괄 지오코딩으로 좌표 캐시 채우기
-      if (S.apiKeys.kakao) {
+      // 배포 환경(서버 키 사용) 또는 카카오 키 입력 시 일괄 지오코딩으로 좌표 캐시 채우기
+      if (S.apiKeys.kakao || IS_HOSTED) {
         try { await ensureGeocodeCache(json); }
         catch (e) { console.warn('[지오코딩] 일괄 처리 실패:', e.message); }
       }
@@ -682,19 +687,42 @@ function mergeIntoCoordIndex(externalCoords) {
 //  카카오 지오코딩 — 역명 → 좌표 변환 (캐시 적극 활용)
 // ════════════════════════════════════════════════════════════
 async function geocodeWithKakao(query, kakaoKey) {
-  if (!kakaoKey || !query) return null;
+  // kakaoKey 인자는 로컬 환경 폴백용. 배포 환경(IS_HOSTED)에서는 /api/geocode 사용 → 키 불필요
+  if (!query) return null;
   // 캐시 확인
   const cached = S.geocodeCache[query];
   if (cached) return cached;
 
+  // 배포 환경: Vercel Serverless /api/geocode 사용 (KAKAO_REST_API_KEY 환경변수 자동 활용)
+  // 장점: 시민이 카카오 키 입력 불필요, 도메인 제한 우회, SW8 카테고리 실패 시 자동 폴백
+  if (IS_HOSTED) {
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
+      if (!res.ok) {
+        if (res.status !== 404) console.warn(`[지오코딩] HTTP ${res.status} - ${query}`);
+        return null;
+      }
+      const data = await res.json();
+      if (typeof data.lat !== 'number' || typeof data.lng !== 'number') return null;
+      const coord = { lat: data.lat, lng: data.lng };
+      S.geocodeCache[query] = coord;
+      try { localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(S.geocodeCache)); } catch {}
+      return coord;
+    } catch (e) {
+      console.warn('[지오코딩] 서버리스 실패:', query, e.message);
+      return null;
+    }
+  }
+
+  // 로컬 환경: 카카오 직접 호출 (CORS 허용). 카카오 키 입력 필요.
+  if (!kakaoKey) return null;
   try {
     const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}&category_group_code=SW8`;
-    // 카카오 API는 CORS 허용이라 프록시 불필요 (직접 호출)
     const res = await fetch(url, {
       headers: { 'Authorization': `KakaoAK ${kakaoKey}` }
     });
     if (!res.ok) {
-      console.warn(`[지오코딩] HTTP ${res.status} - ${query}`);
+      console.warn(`[지오코딩] 로컬 HTTP ${res.status} - ${query}`);
       return null;
     }
     const data = await res.json();
@@ -702,8 +730,7 @@ async function geocodeWithKakao(query, kakaoKey) {
     if (!doc) return null;
     const coord = { lat: parseFloat(doc.y), lng: parseFloat(doc.x) };
     S.geocodeCache[query] = coord;
-    // localStorage에 누적 저장 (다음 세션에서도 재사용)
-    try { localStorage.setItem('elv_geocode_cache', JSON.stringify(S.geocodeCache)); } catch {}
+    try { localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(S.geocodeCache)); } catch {}
     return coord;
   } catch (e) {
     console.warn('[지오코딩] 실패:', query, e.message);
@@ -976,6 +1003,8 @@ const FAULT_REASONS = ['문 개폐 센서 이상','안전장치 점검 중','정
 
 const STORAGE_KEY = 'elv_data_source';
 const STORAGE_KEYS = 'elv_data_keys';
+// 좌표 캐시 키 — 버전 suffix가 있으면 옛 잘못된 캐시(카카오맵 비활성화 시기)는 자동 무시됨
+const GEOCODE_CACHE_KEY = 'elv_geocode_cache_v2';
 
 // 환경 자동 감지: 배포(Vercel 등 https/http 호스트) vs 로컬(file://·localhost·127.0.0.1)
 // 시민용 배포에서는 같은 도메인의 /api/* (Vercel Serverless) 사용, 로컬에서는 8080 포트의 proxy.py 사용
@@ -1575,6 +1604,19 @@ function openSheet(item) {
   const updatedStr = (item.updatedAt && typeof item.updatedAt.toLocaleString === 'function')
     ? item.updatedAt.toLocaleString('ko-KR') : '갱신시각 미상';
   bodyHtml += `<div class="sheet-updated">최종 갱신: ${escapeHtml(updatedStr)}</div>`;
+
+  // 외부 지도 링크 — 시민이 익숙한 네이버/카카오 지도 앱으로 이동
+  // 좌표 + 시설명 동시 전달해서 모바일 앱과 웹 모두에서 정확하게 위치 표시
+  if (!isNaN(item.lat) && !isNaN(item.lng)) {
+    const q = encodeURIComponent(item.facility);
+    const naverUrl = `https://map.naver.com/p/search/${q}`;
+    const kakaoUrl = `https://map.kakao.com/link/search/${q}`;
+    bodyHtml += `<div class="ext-map-btns">
+      <a href="${naverUrl}" target="_blank" rel="noopener noreferrer" class="ext-map-btn naver">🗺️ 네이버 지도</a>
+      <a href="${kakaoUrl}" target="_blank" rel="noopener noreferrer" class="ext-map-btn kakao">🗺️ 카카오맵</a>
+    </div>`;
+  }
+
   document.getElementById('sheetBody').innerHTML = bodyHtml;
   document.getElementById('sheet').classList.add('open');
   const offsetY = window.innerWidth < 768 ? -0.003 : 0;
@@ -1665,7 +1707,7 @@ async function boot() {
   const savedCoordEp = localStorage.getItem('elv_coord_endpoint');
   const savedKricOpr = localStorage.getItem('elv_kric_opr');
   const savedKricLn = localStorage.getItem('elv_kric_ln');
-  const savedGeocode = localStorage.getItem('elv_geocode_cache');
+  const savedGeocode = localStorage.getItem(GEOCODE_CACHE_KEY);
   if (savedKeys) { try { S.apiKeys = JSON.parse(savedKeys); } catch {} }
   // 배포 환경에서는 localStorage의 옛 localhost 값을 무시 (같은 도메인 /api 강제)
   if (savedProxy && !IS_HOSTED) S.proxyUrl = savedProxy;
