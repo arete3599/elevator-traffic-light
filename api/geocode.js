@@ -43,8 +43,15 @@ export default async function handler(req, res) {
 
   async function kakaoSearch(qs) {
     const r = await fetch(`${baseUrl}?${qs}`, { headers });
-    if (!r.ok) throw new Error(`Kakao HTTP ${r.status}`);
-    return r.json();
+    const text = await r.text();
+    if (!r.ok) {
+      const err = new Error(`Kakao HTTP ${r.status} - ${text.slice(0, 300)}`);
+      err.status = r.status;
+      err.bodyText = text;
+      throw err;
+    }
+    try { return JSON.parse(text); }
+    catch { throw new Error(`Kakao response parse failed: ${text.slice(0, 200)}`); }
   }
 
   try {
@@ -77,6 +84,11 @@ export default async function handler(req, res) {
       matchedBy,
     });
   } catch (e) {
-    return res.status(502).json({ error: 'Geocode failed', message: e.message });
+    return res.status(502).json({
+      error: 'Geocode failed',
+      message: e.message,
+      kakaoStatus: e.status || null,
+      kakaoBody: e.bodyText ? e.bodyText.slice(0, 500) : null,
+    });
   }
 }
