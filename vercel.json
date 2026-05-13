@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "**/*.html", "use": "@vercel/static" },
+    { "src": "**/*.png", "use": "@vercel/static" },
+    { "src": "**/*.json", "use": "@vercel/static" },
+    { "src": "**/*.js", "use": "@vercel/static", "config": { "ignore": ["api/**"] } },
+    { "src": "api/*.js", "use": "@vercel/node" }
+  ],
+  "rewrites": [
+    { "source": "/", "destination": "/subway-elevator-status.html" }
+  ],
+  "headers": [
+    {
+      "source": "/service-worker.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ]
+}

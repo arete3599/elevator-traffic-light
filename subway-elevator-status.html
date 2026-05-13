@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1976d2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="승강기 정보">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="교통약자를 위한 전국 지하철·철도·터미널·공항 승강기 실시간 운행 상태 안내">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-apple-touch.png">
+<link rel="manifest" href="manifest.json">
+<title>전국 운수시설 승강기 운행정보</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --primary: #1976d2;
+    --primary-dark: #115293;
+    --bg: #ffffff;
+    --bg-soft: #f5f7fa;
+    --text: #1a2332;
+    --text-muted: #5a6b80;
+    --text-light: #8a9bb0;
+    --border: #e4e8ef;
+    --ok: #00c853;
+    --ok-bg: #e8f8ef;
+    --fault: #e53935;
+    --fault-bg: #fdecea;
+    --shadow: 0 2px 8px rgba(0,0,0,.08);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,.16);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+    --app-h: 100vh;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html, body{height:100%;width:100%;overflow:hidden;overscroll-behavior:none}
+  body{
+    font-family:'Noto Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;height:var(--app-h);
+  }
+  header{
+    flex-shrink:0;z-index:500;background:var(--primary);color:#fff;
+    padding:calc(10px + var(--safe-top)) 14px 10px;
+    box-shadow:var(--shadow);
+    display:flex;align-items:center;gap:8px;
+  }
+  .h-icon{font-size:22px;line-height:1;flex-shrink:0}
+  .h-title{font-size:14px;font-weight:700;letter-spacing:-.2px}
+  .h-sub{font-size:10px;opacity:.85;font-weight:400;margin-top:1px}
+  .h-badge{font-size:9px;background:rgba(255,255,255,.22);padding:2px 6px;border-radius:8px;font-weight:500;margin-left:4px;letter-spacing:.3px}
+  .h-badge.live{background:rgba(0,200,83,.4)}
+  .h-btn{
+    background:rgba(255,255,255,.18);border:none;border-radius:50%;
+    width:34px;height:34px;color:#fff;font-size:15px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    transition:background .2s;flex-shrink:0;
+  }
+  .h-btn:active{background:rgba(255,255,255,.32)}
+  .h-btn.spin{animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .map-wrap{position:relative;flex:1;min-height:0;overflow:hidden}
+  #map{position:absolute;inset:0;background:#e8eef5}
+
+  .search-bar{position:absolute;top:8px;left:10px;right:10px;z-index:400;display:flex;gap:8px}
+  .search-input{
+    flex:1;background:#fff;border:none;border-radius:22px;
+    padding:10px 16px;font-size:14px;font-family:inherit;color:var(--text);
+    outline:none;box-shadow:var(--shadow);
+  }
+  .search-input::placeholder{color:var(--text-light)}
+  .search-input:focus{box-shadow:0 0 0 2px var(--primary),var(--shadow)}
+
+  .filter-chips{position:absolute;top:54px;left:10px;right:10px;z-index:400;display:flex;flex-direction:column;gap:5px}
+  .chip-row{display:flex;gap:5px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:1px}
+  .chip-row::-webkit-scrollbar{display:none}
+  .chip{
+    flex-shrink:0;background:#fff;border:1px solid var(--border);border-radius:18px;
+    padding:5px 12px;font-size:12px;font-weight:500;color:var(--text-muted);
+    cursor:pointer;transition:all .15s;box-shadow:var(--shadow);
+    display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+  }
+  .chip .dot{width:7px;height:7px;border-radius:50%;background:var(--text-light)}
+  .chip.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .chip.active .dot{background:#fff}
+  .chip.ok.active{background:var(--ok);border-color:var(--ok)}
+  .chip.fault.active{background:var(--fault);border-color:var(--fault)}
+
+  .fab-locate{
+    position:absolute;right:10px;bottom:80px;
+    width:46px;height:46px;border-radius:50%;background:#fff;border:none;
+    box-shadow:var(--shadow-lg);cursor:pointer;z-index:450;
+    display:flex;align-items:center;justify-content:center;
+    font-size:20px;color:var(--primary);transition:transform .15s, background .15s;
+  }
+  .fab-locate:active{transform:scale(.92);background:var(--bg-soft)}
+  .fab-locate.locating{animation:pulse 1.4s infinite}
+  @keyframes pulse{
+    0%,100%{box-shadow:var(--shadow-lg),0 0 0 0 rgba(25,118,210,.4)}
+    50%{box-shadow:var(--shadow-lg),0 0 0 12px rgba(25,118,210,0)}
+  }
+
+  .bottombar{
+    flex-shrink:0;z-index:500;background:#fff;border-top:1px solid var(--border);
+    padding:8px 12px calc(8px + var(--safe-bottom));
+    display:flex;align-items:center;justify-content:space-around;gap:8px;
+    box-shadow:0 -2px 8px rgba(0,0,0,.04);
+  }
+  .stat{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;cursor:pointer}
+  .stat .num{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+  .stat .lbl{font-size:11px;color:var(--text-muted)}
+  .stat.ok .num{color:var(--ok)}
+  .stat.fault .num{color:var(--fault)}
+  .stat.total .num{color:var(--text)}
+  .stat-divider{width:1px;height:22px;background:var(--border)}
+  .stat.near{display:none}
+  .stat.near.show{display:flex}
+  .stat.near .num{color:var(--primary)}
+  .stat.near .lbl{font-size:10px}
+
+  .sheet{
+    position:fixed;left:0;right:0;bottom:0;background:#fff;
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 32px rgba(0,0,0,.18);z-index:600;
+    transform:translateY(105%);transition:transform .3s cubic-bezier(.4,.0,.2,1);
+    padding-bottom:var(--safe-bottom);max-height:65vh;
+    overflow-y:auto;-webkit-overflow-scrolling:touch;
+  }
+  .sheet.open{transform:translateY(0)}
+  .sheet-handle{width:40px;height:4px;background:#dde3ec;border-radius:2px;margin:10px auto 6px}
+  .sheet-header{padding:8px 20px 12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px}
+  .sheet-indicator{width:14px;height:14px;border-radius:50%;flex-shrink:0;margin-top:5px}
+  .sheet-title-wrap{flex:1;min-width:0}
+  .sheet-title{font-size:17px;font-weight:700;letter-spacing:-.3px}
+  .sheet-subtitle{font-size:12px;color:var(--text-muted);margin-top:2px}
+  .sheet-badge{font-size:11px;font-weight:700;padding:5px 11px;border-radius:14px;flex-shrink:0;margin-top:3px}
+  .sheet-badge.ok{background:var(--ok-bg);color:var(--ok)}
+  .sheet-badge.fault{background:var(--fault-bg);color:var(--fault)}
+  .sheet-close{background:none;border:none;color:var(--text-muted);font-size:22px;cursor:pointer;padding:0 4px}
+  .sheet-body{padding:14px 20px 20px}
+  .sheet-row{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f0f3f7;font-size:13px}
+  .sheet-row:last-child{border-bottom:none}
+  .sheet-row .k{color:var(--text-muted);font-weight:500;flex-shrink:0;margin-right:12px}
+  .sheet-row .v{color:var(--text);text-align:right;word-break:keep-all}
+  .sheet-fault-reason{background:var(--fault-bg);border-left:3px solid var(--fault);padding:10px 12px;border-radius:6px;margin-top:10px;font-size:13px;color:#7a1f1c}
+  .sheet-fault-reason strong{font-weight:700;display:block;margin-bottom:3px;color:var(--fault)}
+  .sheet-distance{display:inline-block;margin-top:10px;padding:4px 10px;background:rgba(25,118,210,.1);color:var(--primary);border-radius:12px;font-size:11px;font-weight:500}
+  .sheet-updated{margin-top:12px;font-size:11px;color:var(--text-light);text-align:center}
+
+  .marker-pin{
+    width:20px;height:20px;border-radius:50%;border:3px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer;position:relative;
+  }
+  .marker-pin.ok{background:var(--ok)}
+  .marker-pin.fault{background:var(--fault);animation:faultpulse 1.4s infinite}
+  @keyframes faultpulse{
+    0%,100%{box-shadow:0 2px 6px rgba(0,0,0,.3),0 0 0 0 rgba(229,57,53,.6)}
+    50%{box-shadow:0 2px 6px rgba(0,0,0,.3),0 0 0 12px rgba(229,57,53,0)}
+  }
+  .my-loc-pin{
+    width:18px;height:18px;border-radius:50%;background:var(--primary);
+    border:3px solid #fff;box-shadow:0 0 0 3px rgba(25,118,210,.25), 0 2px 8px rgba(0,0,0,.3);
+  }
+
+  .marker-cluster{
+    width:38px !important;height:38px !important;border-radius:50% !important;
+    background:rgba(25,118,210,.25);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .marker-cluster div{
+    width:30px !important;height:30px !important;margin:4px !important;
+    background:var(--primary) !important;color:#fff !important;border-radius:50% !important;
+    box-shadow:0 2px 6px rgba(0,0,0,.25);
+    display:flex !important;align-items:center !important;justify-content:center !important;
+  }
+  .marker-cluster div span{color:#fff !important;font-weight:700;font-size:13px;font-family:inherit;line-height:1 !important}
+  .marker-cluster.has-fault{background:rgba(229,57,53,.25) !important;animation:faultpulse 1.6s infinite}
+  .marker-cluster.has-fault div{background:var(--fault) !important}
+
+  .toast{
+    position:fixed;bottom:calc(80px + var(--safe-bottom));left:50%;
+    transform:translateX(-50%) translateY(20px);
+    background:rgba(26,35,50,.92);color:#fff;
+    padding:10px 18px;border-radius:22px;font-size:13px;opacity:0;
+    transition:all .3s;pointer-events:none;z-index:9999;box-shadow:var(--shadow-lg);
+    max-width:calc(100% - 32px);text-align:center;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* MODAL */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.55);
+    z-index:9000;display:none;align-items:center;justify-content:center;
+    padding:20px;backdrop-filter:blur(3px);
+  }
+  .modal-overlay.show{display:flex}
+  .modal{
+    background:#fff;border-radius:14px;width:100%;max-width:420px;
+    max-height:calc(var(--app-h) - 40px);
+    overflow-y:auto;-webkit-overflow-scrolling:touch;
+    box-shadow:0 20px 60px rgba(0,0,0,.3);animation:modalIn .25s ease;
+  }
+  @keyframes modalIn{
+    from{opacity:0;transform:translateY(20px) scale(.96)}
+    to{opacity:1;transform:translateY(0) scale(1)}
+  }
+  .modal-header{padding:18px 20px 14px;border-bottom:1px solid var(--border)}
+  .modal-title{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .modal-subtitle{font-size:12px;color:var(--text-muted);margin-top:5px;line-height:1.6}
+  .modal-body{padding:14px 20px}
+  .src-option{
+    display:flex;align-items:flex-start;gap:10px;
+    padding:12px;border:1px solid var(--border);border-radius:10px;
+    margin-bottom:8px;cursor:pointer;transition:all .15s;
+  }
+  .src-option:hover{background:var(--bg-soft)}
+  .src-option.active{background:rgba(25,118,210,.06);border-color:var(--primary)}
+  .src-option-radio{
+    width:18px;height:18px;border:2px solid var(--border);border-radius:50%;
+    flex-shrink:0;margin-top:3px;position:relative;transition:all .15s;
+  }
+  .src-option.active .src-option-radio{border-color:var(--primary)}
+  .src-option.active .src-option-radio::after{
+    content:'';position:absolute;inset:3px;background:var(--primary);border-radius:50%;
+  }
+  .src-option-content{flex:1;min-width:0}
+  .src-option-name{font-size:14px;font-weight:600;margin-bottom:3px}
+  .src-option-desc{font-size:11px;color:var(--text-muted);line-height:1.5}
+  .src-key-input{
+    width:100%;margin-top:8px;
+    padding:9px 12px;border:1px solid var(--border);border-radius:7px;
+    font-size:12px;font-family:'JetBrains Mono', monospace;outline:none;
+    transition:border-color .15s;
+  }
+  .src-key-input:focus{border-color:var(--primary)}
+  .src-help{
+    margin-top:8px;padding:9px 11px;
+    background:#fff8e1;border-left:3px solid #f9a825;border-radius:5px;
+    font-size:11px;color:#7a5e00;line-height:1.6;
+  }
+  .src-help strong{display:block;margin-bottom:3px;color:#5d4500}
+  .modal-footer{
+    padding:14px 20px;border-top:1px solid var(--border);
+    display:flex;gap:8px;justify-content:flex-end;
+  }
+  .modal-btn{
+    padding:9px 18px;border-radius:8px;border:none;font-size:13px;
+    font-weight:500;font-family:inherit;cursor:pointer;transition:all .15s;
+  }
+  .modal-btn.secondary{background:var(--bg-soft);color:var(--text-muted)}
+  .modal-btn.secondary:hover{background:#eaeef4}
+  .modal-btn.primary{background:var(--primary);color:#fff}
+  .modal-btn.primary:hover{background:var(--primary-dark)}
+  .modal-btn:disabled{opacity:.5;cursor:not-allowed}
+
+  .leaflet-control-attribution{font-size:9px !important;opacity:.7}
+  .leaflet-control-zoom{margin-bottom:140px !important;margin-right:10px !important}
+  .leaflet-control-zoom a{border-radius:6px !important;color:var(--text) !important}
+
+  @media (min-width: 768px){
+    header{padding:14px 20px}
+    .h-title{font-size:17px}
+    .search-bar{top:12px;left:16px;right:auto;width:340px}
+    .filter-chips{top:58px;left:16px;right:auto;width:340px}
+    .bottombar{padding:10px 20px calc(10px + var(--safe-bottom))}
+    .fab-locate{bottom:30px}
+    .leaflet-control-zoom{margin-bottom:80px !important}
+    .sheet{
+      top:auto;left:16px;right:auto;bottom:80px;width:340px;
+      max-height:60vh;border-radius:14px;
+      transform:translateY(120%);box-shadow:var(--shadow-lg);
+    }
+    .sheet.open{transform:translateY(0)}
+    .sheet-handle{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="h-icon">🛗</div>
+  <div style="flex:1;min-width:0">
+    <div class="h-title">운수시설 승강기 운행정보 <span class="h-badge" id="srcBadge">DEMO</span></div>
+    <div class="h-sub" id="srcSubtitle">전국 지하철·기차·터미널·공항</div>
+  </div>
+  <button class="h-btn" id="settingsBtn" onclick="openSettings()" aria-label="설정" title="데이터 소스 설정">⚙</button>
+  <button class="h-btn" id="refreshBtn" onclick="refreshData()" aria-label="새로고침" title="새로고침">↻</button>
+</header>
+
+<div class="map-wrap">
+  <div id="map"></div>
+
+  <div class="search-bar">
+    <input type="text" class="search-input" id="searchInput" placeholder="🔍 시설명·역명 검색 (엔터)" inputmode="search" enterkeyhint="search">
+  </div>
+
+  <div class="filter-chips">
+    <div class="chip-row">
+      <button class="chip active" id="chip-all" onclick="setFilter('all')">전체</button>
+      <button class="chip ok active" id="chip-ok" onclick="setFilter('ok')"><span class="dot"></span>운행중</button>
+      <button class="chip fault active" id="chip-fault" onclick="setFilter('fault')"><span class="dot"></span>운행불가</button>
+    </div>
+    <div class="chip-row">
+      <button class="chip" id="chip-subway" onclick="setTypeFilter('subway')">🚇 지하철</button>
+      <button class="chip" id="chip-train" onclick="setTypeFilter('train')">🚄 기차역</button>
+      <button class="chip" id="chip-terminal" onclick="setTypeFilter('terminal')">🚌 터미널</button>
+      <button class="chip" id="chip-airport" onclick="setTypeFilter('airport')">✈️ 공항</button>
+    </div>
+  </div>
+
+  <button class="fab-locate" id="locateBtn" onclick="locateMe()" aria-label="내 위치" title="내 위치로 이동">📍</button>
+</div>
+
+<div class="bottombar">
+  <div class="stat ok" onclick="filterOnly('ok')"><div class="num" id="cOk">0</div><div class="lbl">운행중</div></div>
+  <div class="stat-divider"></div>
+  <div class="stat fault" onclick="filterOnly('fault')"><div class="num" id="cFault">0</div><div class="lbl">운행불가</div></div>
+  <div class="stat-divider"></div>
+  <div class="stat total" onclick="resetFilter()"><div class="num" id="cTotal">0</div><div class="lbl">전체</div></div>
+  <div class="stat-divider" id="nearDiv" style="display:none"></div>
+  <div class="stat near" id="nearStat" onclick="zoomToMyLocation()"><div class="num" id="cNear">0</div><div class="lbl">5km내 불가</div></div>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div class="sheet-indicator" id="sheetIndicator"></div>
+    <div class="sheet-title-wrap">
+      <div class="sheet-title" id="sheetTitle">-</div>
+      <div class="sheet-subtitle" id="sheetSubtitle">-</div>
+    </div>
+    <span class="sheet-badge ok" id="sheetBadge">운행중</span>
+    <button class="sheet-close" onclick="closeSheet()" aria-label="닫기">✕</button>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 설정 모달 -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">⚙ 데이터 소스 설정</div>
+      <div class="modal-subtitle">지도에 표시할 승강기 데이터를 어디서 가져올지 선택합니다.</div>
+    </div>
+    <div class="modal-body" id="srcOptions"></div>
+    <div class="modal-footer">
+      <button class="modal-btn secondary" onclick="closeSettings()">취소</button>
+      <button class="modal-btn primary" id="srcApplyBtn" onclick="applySettings()">적용</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// 뷰포트 안정화
+function setAppHeight() {
+  const h = (window.visualViewport && window.visualViewport.height)
+            ? window.visualViewport.height : window.innerHeight;
+  document.documentElement.style.setProperty('--app-h', `${h}px`);
+  if (S.map && S.map.invalidateSize) {
+    requestAnimationFrame(() => S.map.invalidateSize(false));
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  데이터 어댑터 — 표준 Item 스키마:
+//  { id, facility, type, addr, hoNo, status, lat, lng, reason, updatedAt }
+// ════════════════════════════════════════════════════════════
+const DATA_SOURCES = {
+  demo: {
+    key:'demo', name:'데모 (시뮬레이션 데이터)',
+    desc:'전국 70여 개 시설 · 약 350건의 가상 승강기 데이터로 즉시 작동. 키 불필요.',
+    badge:'DEMO', needsKey:false,
+    subtitle:'전국 지하철·기차·터미널·공항 (시뮬레이션)',
+    fetch: async () => buildDemoData(),
+  },
+
+  seoul: {
+    key:'seoul', name:'서울교통공사 실시간 가동현황 ★ 권장',
+    desc:'서울 열린데이터광장 SeoulMetroFaciInfo API. 1~8호선 엘리베이터·에스컬레이터 실시간 USE_YN(사용가능/불가) 데이터. 본래 목적인 "교통약자 운행상태 안내"에 가장 적합.',
+    badge:'SEOUL', needsKey:true,
+    keyPlaceholder:'서울 열린데이터광장 인증키',
+    helpHtml:'<strong>키 발급</strong>data.seoul.go.kr 회원가입 → 인증키 신청 → 자동발급<br><strong>실행</strong>이 폴더의 <code>start-proxy.bat</code> 더블클릭 → 검은 창 유지<br><strong>좌표</strong>카카오 지오코딩 자동 활용 (아래 카카오 키 입력)',
+    subtitle:'서울 1~8호선 실시간 가동현황 (USE_YN)',
+    fetch: async (apiKey) => {
+      const proxyBase = S.proxyUrl || 'http://localhost:8080';
+      // 서울 열린데이터광장 표준 URL 형식 (사용자가 직접 URL 입력 시 그것 우선)
+      const endpoint = S.tagoEndpoint
+        || `http://openapi.seoul.go.kr:8088/${apiKey}/xml/SeoulMetroFaciInfo/1/1000/`;
+      const proxiedUrl = `${proxyBase}/api/proxy?url=${encodeURIComponent(endpoint)}`;
+      const res = await fetch(proxiedUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status} — 프록시 또는 서울 열린데이터광장 오류`);
+
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      const text = await res.text();
+      let json;
+      if (ct.includes('xml') || text.trim().startsWith('<')) {
+        json = parseXmlToJson(text);
+        console.log('[서울] XML 응답을 JSON으로 변환했습니다');
+      } else {
+        try { json = JSON.parse(text); }
+        catch (e) { throw new Error('응답 파싱 실패 — ' + text.slice(0,80)); }
+      }
+
+      // 서울 열린데이터광장 표준 에러 응답 감지
+      const code = json?.RESULT?.CODE || json?.SeoulMetroFaciInfo?.RESULT?.CODE;
+      if (code && code !== 'INFO-000' && code !== 'INFO-0' && !String(code).includes('NORMAL')) {
+        const msg = json?.RESULT?.MESSAGE || json?.SeoulMetroFaciInfo?.RESULT?.MESSAGE || '알 수 없는 오류';
+        throw new Error(`서울 API 오류 [${code}] ${msg}`);
+      }
+
+      // 카카오 키가 있으면 일괄 지오코딩으로 좌표 캐시 채우기
+      if (S.apiKeys.kakao) {
+        try { await ensureGeocodeCache(json); }
+        catch (e) { console.warn('[지오코딩] 일괄 처리 실패:', e.message); }
+      }
+      return mapTagoToItems(json);
+    },
+  },
+
+  tago: {
+    key:'tago', name:'국토교통부 TAGO (전국 교통약자 이동지원)',
+    desc:'data.go.kr TAGO API. 전국 교통시설 마스터 정보. 가동상태 미포함 가능성 있음.',
+    badge:'TAGO', needsKey:true,
+    keyPlaceholder:'인증키 (data.go.kr 발급)',
+    helpHtml:'<strong>참고</strong>이 데이터셋은 가동상태가 없을 수 있어 우리 앱 본래 목적에 한계가 있습니다. 가능하면 위 "서울교통공사" 우선 사용 권장',
+    subtitle:'전국 운수시설 마스터 (TAGO)',
+    fetch: async (apiKey) => {
+      const proxyBase = S.proxyUrl || 'http://localhost:8080';
+
+      // [선택] 좌표 데이터셋이 설정되어 있으면 먼저 호출해서 룩업 테이블에 병합
+      if (S.coordEndpoint) {
+        try {
+          const coords = await fetchCoordDataset(apiKey, proxyBase);
+          mergeIntoCoordIndex(coords);
+          console.log(`[좌표] ${Object.keys(coords).length}개 역 좌표 병합 완료`);
+        } catch (e) {
+          console.warn('[좌표] 좌표 데이터셋 로드 실패 (내부 룩업만 사용):', e.message);
+        }
+      }
+
+      // 사용자 설정 엔드포인트 우선, 없으면 기본값 사용
+      const endpoint = S.tagoEndpoint
+        || `http://apis.data.go.kr/B551177/StatusOfPassengerWlfrFcltyInfo/getPassengerWlfrFcltyInfo?numOfRows=500&pageNo=1&type=json`;
+      // serviceKey 자동 추가 (이미 있으면 건너뜀)
+      const sep = endpoint.includes('?') ? '&' : '?';
+      const withKey = endpoint.includes('serviceKey=')
+        ? endpoint
+        : `${endpoint}${sep}serviceKey=${apiKey}`;
+      const proxiedUrl = `${proxyBase}/api/proxy?url=${encodeURIComponent(withKey)}`;
+      const res = await fetch(proxiedUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status} — 프록시 또는 공공API 오류`);
+
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      const text = await res.text();
+      let json;
+      if (ct.includes('xml') || text.trim().startsWith('<')) {
+        json = parseXmlToJson(text);
+        console.log('[데이터] XML 응답을 JSON으로 변환했습니다');
+      } else {
+        try { json = JSON.parse(text); }
+        catch (e) { throw new Error('응답을 JSON으로 파싱할 수 없습니다 — ' + text.slice(0,80)); }
+      }
+      // 공공데이터 표준 에러 응답 감지
+      const resultCode = json?.response?.header?.resultCode || json?.resultCode
+                      || json?.RESULT?.CODE || json?.SeoulMetroFaciInfo?.RESULT?.CODE;
+      if (resultCode && resultCode !== '00' && resultCode !== '0' && resultCode !== 'INFO-0' && resultCode !== 'INFO-000') {
+        const msg = json?.response?.header?.resultMsg || json?.resultMsg
+                 || json?.RESULT?.MESSAGE || json?.SeoulMetroFaciInfo?.RESULT?.MESSAGE || '알 수 없는 오류';
+        throw new Error(`공공API 오류 [${resultCode}] ${msg}`);
+      }
+      return mapTagoToItems(json);
+    },
+  },
+
+  kric: {
+    key:'kric', name:'레일포털 KRIC (마스터 정보만, 가동상태 ✗)',
+    desc:'한국철도공사·도시철도 22개 운영기관 마스터. 가동상태(운행중/고장) 정보는 제공되지 않으니 본래 목적에는 부적합. 분포·정원 시각화 용도로만 사용 가능.',
+    badge:'KRIC', needsKey:true,
+    keyPlaceholder:'KRIC 인증키 (data.kric.go.kr 발급)',
+    helpHtml:'<strong>주의</strong>이 API는 stationElevator 마스터 정보만 제공하며 가동상태(USE_YN, opratSttus 등) 데이터가 없습니다. 본 앱은 실시간 운행상태 표시가 목적이므로 위 "서울교통공사" 우선 사용 권장',
+    subtitle:'전국 도시·광역철도 마스터 (KRIC)',
+    fetch: async (apiKey) => {
+      const proxyBase = S.proxyUrl || 'http://localhost:8080';
+
+      // KRIC stationElevator 호출 - 운영기관·노선별로 묶어서 호출 가능
+      const endpoint = S.kricEndpoint
+        || 'https://openapi.kric.go.kr/openapi/convenientInfo/stationElevator';
+      // KRIC 표준 파라미터: serviceKey, format=json, railOprIsttCd, lnCd
+      const sep = endpoint.includes('?') ? '&' : '?';
+      const params = `format=json&railOprIsttCd=${S.kricOprCd || 'S1'}&lnCd=${S.kricLnCd || '1'}`;
+      const withKey = endpoint.includes('serviceKey=')
+        ? `${endpoint}${sep}${params}`
+        : `${endpoint}${sep}${params}&serviceKey=${apiKey}`;
+      const proxiedUrl = `${proxyBase}/api/proxy?url=${encodeURIComponent(withKey)}`;
+      const res = await fetch(proxiedUrl);
+      if (!res.ok) throw new Error(`KRIC HTTP ${res.status}`);
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      const text = await res.text();
+      let json;
+      if (ct.includes('xml') || text.trim().startsWith('<')) json = parseXmlToJson(text);
+      else json = JSON.parse(text);
+
+      // 결과코드 체크 (KRIC 표준)
+      const resultCode = json?.header?.resultCode || json?.response?.header?.resultCode;
+      if (resultCode && resultCode !== '00' && resultCode !== '0' && !String(resultCode).includes('NORMAL')) {
+        const msg = json?.header?.resultMsg || json?.response?.header?.resultMsg || '알 수 없는 오류';
+        throw new Error(`KRIC API 오류 [${resultCode}] ${msg}`);
+      }
+
+      // KRIC 스테이션 코드 → 역명·운영기관 룩업 테이블 로드
+      if (!S.kricStations) {
+        try {
+          const r = await fetch('kric-stations.json');
+          S.kricStations = await r.json();
+        } catch (e) {
+          console.warn('[KRIC] kric-stations.json 로드 실패 (역명 결합 생략):', e.message);
+          S.kricStations = {};
+        }
+      }
+
+      // 카카오 키가 있으면 지오코딩 캐시 준비
+      if (S.apiKeys.kakao) {
+        await ensureGeocodeCache(json);
+      }
+
+      return mapTagoToItems(json);
+    },
+  },
+
+  koelsa: {
+    key:'koelsa', name:'한국승강기안전공단 EICP (향후 연동)',
+    desc:'전국 모든 승강기 실시간 IoT 데이터. 사고·고장 즉시 반영. KOELSA 내부망 또는 공식 API 협약 필요.',
+    badge:'EICP', needsKey:true,
+    keyPlaceholder:'EICP 토큰 (협약 후 발급)',
+    helpHtml:'<strong>현 상태</strong>이 옵션은 향후 KOELSA와의 API 협약 또는 내부망 연동을 가정한 자리입니다<br><strong>제안</strong>선생님 공단 재직 경험을 살려 향후 공식 협의 시 이 자리에 연결할 수 있습니다',
+    subtitle:'전국 승강기 (한국승강기안전공단 EICP)',
+    fetch: async () => { throw new Error('EICP는 현재 협약 단계가 아닙니다'); },
+  },
+};
+
+// 브라우저 내장 XML 파서로 간이 변환 (공공데이터 표준 XML 응답 지원)
+function parseXmlToJson(xmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'application/xml');
+  if (doc.querySelector('parsererror')) {
+    throw new Error('XML 파싱 실패');
+  }
+  function nodeToObj(node) {
+    if (!node) return null;
+    if (node.children.length === 0) return node.textContent;
+    const obj = {};
+    for (const child of node.children) {
+      const key = child.tagName;
+      const value = nodeToObj(child);
+      if (obj[key] !== undefined) {
+        if (!Array.isArray(obj[key])) obj[key] = [obj[key]];
+        obj[key].push(value);
+      } else {
+        obj[key] = value;
+      }
+    }
+    return obj;
+  }
+  return nodeToObj(doc.documentElement);
+}
+
+// 응답 구조 자동 탐색 — 공공데이터 데이터셋마다 다른 컨테이너 경로 대응
+function findItemArray(json) {
+  // 후보 경로를 순서대로 시도 (표준 공공데이터 응답 → 서울교통공사 스타일 → 변형)
+  const candidates = [
+    json?.response?.body?.items?.item,
+    json?.response?.body?.items,
+    json?.response?.body?.item,
+    json?.body?.items?.item,
+    json?.body?.items,
+    json?.data?.items,
+    json?.data?.list,
+    json?.data,
+    json?.items,
+    json?.list,
+    json?.result,
+    json?.row,                  // 서울교통공사 SeoulMetroFaciInfo 스타일
+    json?.SeoulMetroFaciInfo?.row,
+    json?.SearchSTNBySubwayLineInfo?.row,
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c) && c.length > 0) return c;
+    // item이 단일 객체로 올 때도 처리
+    if (c && typeof c === 'object' && !Array.isArray(c) && Object.keys(c).length > 0
+        && (c.fcltyNm || c.facilityName || c.stationName || c.name || c.STN_NM)) {
+      return [c];
+    }
+  }
+  // 마지막 시도: 루트 객체의 자식 중 'row' 같은 이름의 배열 찾기 (서울시 API 패턴)
+  if (json && typeof json === 'object') {
+    for (const key of Object.keys(json)) {
+      const v = json[key];
+      if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') return v;
+      if (v && typeof v === 'object' && Array.isArray(v.row)) return v.row;
+    }
+  }
+  return [];
+}
+
+// 필드명 후보군에서 첫 번째로 존재하는 값을 반환 (대소문자 무관)
+function pickField(obj, candidates) {
+  if (!obj || typeof obj !== 'object') return undefined;
+  const keys = Object.keys(obj);
+  const lower = {};
+  keys.forEach(k => { lower[k.toLowerCase()] = obj[k]; });
+  for (const c of candidates) {
+    if (obj[c] !== undefined && obj[c] !== null && obj[c] !== '') return obj[c];
+    const lk = c.toLowerCase();
+    if (lower[lk] !== undefined && lower[lk] !== null && lower[lk] !== '') return lower[lk];
+  }
+  return undefined;
+}
+
+// XSS 방지용 텍스트 이스케이프
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Date 객체 안전 변환
+function safeDate(value) {
+  if (!value) return new Date();
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
+// 역명 정규화 — "서울역(1)" → "서울역", "강남역 (2호선)" → "강남역" 등
+function normalizeStationName(name) {
+  if (!name) return '';
+  return String(name)
+    .replace(/\([^)]*\)/g, '')      // 괄호와 그 안의 내용 제거
+    .replace(/\d+호선/g, '')         // "2호선" 등 제거
+    .replace(/역\s*$/, '역')          // 끝의 "역" 정리
+    .replace(/\s+/g, '')              // 공백 제거
+    .trim();
+}
+
+// FACILITIES에서 역명 → 좌표 룩업 테이블 생성 (앱 시작 시 1회)
+function buildStationCoordIndex() {
+  const idx = {};
+  FACILITIES.forEach(f => {
+    const key = normalizeStationName(f.name);
+    if (key) idx[key] = { lat: f.lat, lng: f.lng, addr: f.addr };
+    // 역명에서 "역" 떼고도 키로 등록 (예: "서울역" → "서울"도 매칭 가능)
+    const keyShort = key.replace(/역$/, '');
+    if (keyShort && !idx[keyShort]) idx[keyShort] = { lat: f.lat, lng: f.lng, addr: f.addr };
+  });
+  return idx;
+}
+
+// 외부에서 결합용으로 좌표 인덱스 주입 가능 (좌표 데이터셋 결합 시)
+function mergeIntoCoordIndex(externalCoords) {
+  // externalCoords: { '역코드 또는 역명': {lat, lng}, ... }
+  if (!externalCoords) return;
+  Object.assign(S.coordIndex, externalCoords);
+}
+
+// ════════════════════════════════════════════════════════════
+//  카카오 지오코딩 — 역명 → 좌표 변환 (캐시 적극 활용)
+// ════════════════════════════════════════════════════════════
+async function geocodeWithKakao(query, kakaoKey) {
+  if (!kakaoKey || !query) return null;
+  // 캐시 확인
+  const cached = S.geocodeCache[query];
+  if (cached) return cached;
+
+  try {
+    const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}&category_group_code=SW8`;
+    // 카카오 API는 CORS 허용이라 프록시 불필요 (직접 호출)
+    const res = await fetch(url, {
+      headers: { 'Authorization': `KakaoAK ${kakaoKey}` }
+    });
+    if (!res.ok) {
+      console.warn(`[지오코딩] HTTP ${res.status} - ${query}`);
+      return null;
+    }
+    const data = await res.json();
+    const doc = data.documents?.[0];
+    if (!doc) return null;
+    const coord = { lat: parseFloat(doc.y), lng: parseFloat(doc.x) };
+    S.geocodeCache[query] = coord;
+    // localStorage에 누적 저장 (다음 세션에서도 재사용)
+    try { localStorage.setItem('elv_geocode_cache', JSON.stringify(S.geocodeCache)); } catch {}
+    return coord;
+  } catch (e) {
+    console.warn('[지오코딩] 실패:', query, e.message);
+    return null;
+  }
+}
+
+// 응답에 등장한 모든 역명을 사전에 지오코딩하여 캐시 채우기
+async function ensureGeocodeCache(rawJson) {
+  const items = findItemArray(rawJson);
+  const uniqueQueries = new Set();
+  items.forEach(d => {
+    // KRIC 스키마: stinNm + lnNm 조합 또는 STIN_CD로 룩업 후
+    const stnNm = pickField(d, ['stinNm','STIN_NM','stnNm','STN_NM','stationName']) ||
+                  (S.kricStations && pickField(d, ['stinCd','STIN_CD','stnCd'])
+                    && S.kricStations[pickField(d, ['stinCd','STIN_CD','stnCd'])]?.nm);
+    if (stnNm) uniqueQueries.add(`${stnNm}역`);
+  });
+
+  console.log(`[지오코딩] ${uniqueQueries.size}개 역명 지오코딩 시작 (캐시 ${Object.keys(S.geocodeCache).length}건 보유)`);
+  let newCount = 0, hitCount = 0;
+  for (const q of uniqueQueries) {
+    if (S.geocodeCache[q]) { hitCount++; continue; }
+    const coord = await geocodeWithKakao(q, S.apiKeys.kakao);
+    if (coord) {
+      S.coordIndex[q.replace(/역$/, '')] = coord;
+      S.coordIndex[q] = coord;
+      newCount++;
+    }
+    // 카카오 한도 안전을 위해 50ms 간격
+    await new Promise(r => setTimeout(r, 50));
+  }
+  console.log(`[지오코딩] 완료: 신규 ${newCount}건, 캐시히트 ${hitCount}건`);
+}
+
+// 좌표 데이터셋 호출 — 역코드(STN_CD) 또는 역명(STN_NM) → {lat,lng} 매핑 구성
+async function fetchCoordDataset(apiKey, proxyBase) {
+  const endpoint = S.coordEndpoint;
+  if (!endpoint) return {};
+  const sep = endpoint.includes('?') ? '&' : '?';
+  const withKey = endpoint.includes('serviceKey=')
+    ? endpoint
+    : `${endpoint}${sep}serviceKey=${apiKey}`;
+  const proxiedUrl = `${proxyBase}/api/proxy?url=${encodeURIComponent(withKey)}`;
+  const res = await fetch(proxiedUrl);
+  if (!res.ok) throw new Error(`좌표 데이터셋 HTTP ${res.status}`);
+  const ct = (res.headers.get('content-type') || '').toLowerCase();
+  const text = await res.text();
+  let json;
+  if (ct.includes('xml') || text.trim().startsWith('<')) json = parseXmlToJson(text);
+  else json = JSON.parse(text);
+
+  const rows = findItemArray(json);
+  const coordMap = {};
+  rows.forEach(r => {
+    const lat = parseFloat(pickField(r, ['YCNTS','WGS84_Y','LAT','LA','latitude','lat','fcltyLa','crdntY']));
+    const lng = parseFloat(pickField(r, ['XCNTS','WGS84_X','LNG','LON','LO','longitude','lng','lon','fcltyLo','crdntX']));
+    if (isNaN(lat) || isNaN(lng)) return;
+    const stnCd = pickField(r, ['STN_CD','STATN_ID','stationCode','stnCd','statnId']);
+    const stnNm = pickField(r, ['STN_NM','STATN_NM','stationName','stnNm','statnNm']);
+    if (stnCd) coordMap[String(stnCd)] = { lat, lng };
+    if (stnNm) {
+      const key = normalizeStationName(String(stnNm));
+      coordMap[key] = { lat, lng };
+      coordMap[key.replace(/역$/,'')] = { lat, lng };
+    }
+  });
+  return coordMap;
+}
+
+function mapTagoToItems(json) {
+  const items = findItemArray(json);
+  console.log(`[데이터] 응답 항목 ${items.length}건 발견`);
+  if (items.length === 0) {
+    console.warn('[데이터] 응답 구조 탐색 실패. 원본 응답:', json);
+  }
+
+  // 좌표 인덱스 준비 (앱 부팅 시 한 번 만들어진 것 사용)
+  if (!S.coordIndex || Object.keys(S.coordIndex).length === 0) {
+    S.coordIndex = buildStationCoordIndex();
+  }
+
+  let geoSkipped = 0;
+  const mapped = items.map((d, i) => {
+    // 위경도 직접 추출 시도 (TAGO 표준 + 서울교통공사 + KRIC 레일포털 + 일반)
+    let lat = parseFloat(pickField(d, ['fcltyLa','latitude','lat','wgsX','XCODE','y','GRID_Y','YCNTS','WGS84_Y','LAT','LA','stinPosY','crdntY','stnY']));
+    let lng = parseFloat(pickField(d, ['fcltyLo','longitude','lng','lon','wgsY','YCODE','x','GRID_X','XCNTS','WGS84_X','LNG','LO','LON','stinPosX','crdntX','stnX']));
+
+    // 시설명 추출 — TAGO + 서울교통공사 + KRIC + 일반
+    let facilityRaw = pickField(d, ['fcltyNm','facilityName','stationName','stnNm','name','fclt_nm','FCLT_NM','STN_NM','statnNm','STATN_NM','stinNm','stinNmKor']);
+
+    // KRIC 응답에 stinCd만 있고 역명이 없는 경우, kric-stations.json에서 역명 보충
+    if (!facilityRaw && S.kricStations) {
+      const sc = pickField(d, ['stinCd','STIN_CD','stnCd']);
+      if (sc && S.kricStations[sc]) facilityRaw = S.kricStations[sc].nm;
+    }
+    const facility = facilityRaw ? String(facilityRaw) : '';
+
+    // 좌표가 없으면 역명/역코드로 룩업 시도
+    if ((isNaN(lat) || isNaN(lng)) && facility) {
+      const lookupKey = normalizeStationName(facility);
+      const coord = S.coordIndex[lookupKey]
+                 || S.coordIndex[lookupKey.replace(/역$/,'')]
+                 || S.coordIndex[lookupKey + '역']
+                 || S.geocodeCache[lookupKey + '역']
+                 || S.geocodeCache[lookupKey];
+      if (coord) {
+        lat = coord.lat + (Math.random()-0.5)*0.0006;   // 같은 역 다중 마커 분산
+        lng = coord.lng + (Math.random()-0.5)*0.0008;
+      }
+    }
+
+    // 역코드로 추가 룩업 (좌표 데이터셋 결합 시 활용) — KRIC 필드명도 포함
+    const stnCode = pickField(d, ['STN_CD','stnCd','stationCode','STATN_ID','statnId','stinCd','stinId']);
+    if ((isNaN(lat) || isNaN(lng)) && stnCode && S.coordIndex[stnCode]) {
+      const coord = S.coordIndex[stnCode];
+      lat = coord.lat + (Math.random()-0.5)*0.0006;
+      lng = coord.lng + (Math.random()-0.5)*0.0008;
+    }
+
+    const statusRaw = pickField(d, ['opratSttus','status','operStatus','useYn','runStatus','USE_YN','USEYN','elvtrStts','elvtrStatus','operStts']) || '';
+    const typeRaw = pickField(d, ['fcltyCl','facilityType','fcltyTypeCd','category','type','fcltyKnd','ELVTR_SE','elvtrKnd','elvtrSe','elvtrType']) || '';
+    const elvtrNm = pickField(d, ['ELVTR_NM','elvtrNm','elevatorName','elvtrNmKor']) || '';
+    const installPosition = pickField(d, ['INSTL_PSTN','instlPstn','installPosition','dtlLoc','exitNo']) || '';
+    const opSec = pickField(d, ['OPR_SEC','oprSec','operationSection','operSection']) || '';
+    const railOper = pickField(d, ['railOprIsttCd','railOprIsttNm','operatorName','operator']) || '';
+    const lineCode = pickField(d, ['lnCd','lnNm','lineName','line']) || '';
+
+    // 호기 번호 추출 — ELVTR_NM에서 "N호기" 패턴 잡기
+    let hoNo = pickField(d, ['elvtrNo','elvtrId','elevatorNo','elevatorId','machineNo']);
+    if (!hoNo && elvtrNm) {
+      const m = String(elvtrNm).match(/(\d+)\s*호기/);
+      if (m) hoNo = `${m[1]}호기`;
+    }
+    if (!hoNo) hoNo = `${i+1}호기`;
+
+    // 엘리베이터인지 에스컬레이터인지 구분
+    const isEscalator = String(typeRaw).toUpperCase() === 'ES'
+                      || String(elvtrNm).includes('에스컬레이터')
+                      || String(elvtrNm).includes('escalator');
+    if (isEscalator) hoNo = `${hoNo} (에스컬레이터)`;
+
+    // 주소 — 별도 필드 없으면 시설명+설치위치+운행구간 조합
+    let addr = pickField(d, ['addr','address','roadAddr','jibunAddr','lnmAdres','ADRES','ADDR']);
+    if (!addr && (installPosition || opSec)) {
+      addr = [installPosition, opSec].filter(Boolean).join(' · ');
+    }
+
+    return {
+      id: pickField(d, ['fcltyMngrSeq','elvtrId','elevatorId','id','seq','no']) || `${stnCode || 'ROW'}-${i}`,
+      facility: facility || '시설명 미상',
+      type: classifyType(String(typeRaw) + ' ' + facility),
+      addr: addr || '-',
+      hoNo: hoNo,
+      status: classifyStatus(statusRaw),
+      lat: lat,
+      lng: lng,
+      reason: pickField(d, ['stoppgRsn','reason','faultReason','remark','etc','RM']) || (classifyStatus(statusRaw) === 'fault' ? statusRaw : null),
+      updatedAt: safeDate(pickField(d, ['updtDt','updateDate','lastUpdate','updateAt','modDt','UPDT_DT'])),
+      _hasGeo: !isNaN(lat) && !isNaN(lng) && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01,
+    };
+  });
+
+  // 위경도가 없는 항목은 지도에 표시할 수 없으므로 필터링
+  const withGeo = mapped.filter(m => m._hasGeo);
+  geoSkipped = mapped.length - withGeo.length;
+  S.lastSkipped = geoSkipped;   // 통계 안내용
+
+  if (mapped.length > 0 && withGeo.length === 0) {
+    console.warn('[데이터] 모든 항목의 좌표가 누락되었습니다. 응답 첫 항목:', items[0]);
+    throw new Error(`응답 ${mapped.length}건 모두 좌표 누락 — 좌표 데이터셋을 추가하시거나 FACILITIES 내부 테이블을 확장해주세요`);
+  }
+  if (geoSkipped > 0) {
+    console.warn(`[데이터] 좌표를 알 수 없어 ${geoSkipped}건 제외됨 (전체 ${mapped.length}건 중 ${withGeo.length}건 표시)`);
+  }
+  return withGeo;
+}
+
+function classifyType(raw) {
+  const r = String(raw).toLowerCase();
+  if (raw.includes('지하철') || raw.includes('도시철도') || r.includes('metro') || r.includes('subway')) return 'subway';
+  if (raw.includes('기차') || raw.includes('철도') || raw.includes('역사') || raw.includes('KTX') || raw.includes('SRT') || r.includes('train') || r.includes('rail')) return 'train';
+  if (raw.includes('터미널') || raw.includes('정류장') || r.includes('terminal') || r.includes('bus')) return 'terminal';
+  if (raw.includes('공항') || r.includes('airport')) return 'airport';
+  return 'subway';
+}
+
+function classifyStatus(raw) {
+  const s = String(raw).toLowerCase();
+  if (raw.includes('중단') || raw.includes('고장') || raw.includes('점검') || raw.includes('정지')
+      || s === 'fault' || s === 'n' || s === 'stop' || s === 'down' || s === 'inactive' || s === 'maintenance') {
+    return 'fault';
+  }
+  return 'ok';
+}
+
+// ════════════════════════════════════════════════════════════
+//  데모 데이터 정의 (이전과 동일)
+// ════════════════════════════════════════════════════════════
+const FACILITIES = [
+  { name:'강남역', type:'subway', addr:'서울 강남구 강남대로 396', lat:37.4979, lng:127.0276, elevators:6 },
+  { name:'잠실역', type:'subway', addr:'서울 송파구 올림픽로 240', lat:37.5133, lng:127.1001, elevators:8 },
+  { name:'홍대입구역', type:'subway', addr:'서울 마포구 양화로 160', lat:37.5571, lng:126.9245, elevators:5 },
+  { name:'신촌역', type:'subway', addr:'서울 서대문구 신촌로 83', lat:37.5553, lng:126.9368, elevators:4 },
+  { name:'종로3가역', type:'subway', addr:'서울 종로구 종로 129', lat:37.5710, lng:126.9920, elevators:7 },
+  { name:'시청역', type:'subway', addr:'서울 중구 세종대로 101', lat:37.5641, lng:126.9776, elevators:5 },
+  { name:'서울역', type:'subway', addr:'서울 용산구 한강대로 405', lat:37.5547, lng:126.9706, elevators:9 },
+  { name:'동대문역사문화공원역', type:'subway', addr:'서울 중구 을지로 281', lat:37.5663, lng:127.0080, elevators:6 },
+  { name:'왕십리역', type:'subway', addr:'서울 성동구 왕십리광장로 17', lat:37.5615, lng:127.0378, elevators:7 },
+  { name:'고속터미널역', type:'subway', addr:'서울 서초구 신반포로 188', lat:37.5045, lng:127.0046, elevators:8 },
+  { name:'사당역', type:'subway', addr:'서울 동작구 남부순환로 지하 2089', lat:37.4766, lng:126.9817, elevators:6 },
+  { name:'건대입구역', type:'subway', addr:'서울 광진구 능동로 217', lat:37.5402, lng:127.0694, elevators:5 },
+  { name:'노원역', type:'subway', addr:'서울 노원구 노원로 480', lat:37.6559, lng:127.0569, elevators:5 },
+  { name:'수서역', type:'subway', addr:'서울 강남구 광평로 428', lat:37.4871, lng:127.1033, elevators:6 },
+  { name:'을지로3가역', type:'subway', addr:'서울 중구 을지로 지하 129', lat:37.5660, lng:126.9924, elevators:5 },
+  { name:'합정역', type:'subway', addr:'서울 마포구 양화로 지하 60', lat:37.5495, lng:126.9135, elevators:4 },
+  { name:'이태원역', type:'subway', addr:'서울 용산구 이태원로 177', lat:37.5344, lng:126.9947, elevators:3 },
+  { name:'압구정역', type:'subway', addr:'서울 강남구 압구정로 172', lat:37.5272, lng:127.0286, elevators:4 },
+  { name:'성수역', type:'subway', addr:'서울 성동구 아차산로 100', lat:37.5447, lng:127.0557, elevators:4 },
+  { name:'문정역', type:'subway', addr:'서울 송파구 충민로 지하 10', lat:37.4859, lng:127.1224, elevators:5 },
+  { name:'판교역', type:'subway', addr:'경기 성남시 분당구 판교역로 160', lat:37.3943, lng:127.1112, elevators:6 },
+  { name:'정자역', type:'subway', addr:'경기 성남시 분당구 정자일로 95', lat:37.3672, lng:127.1083, elevators:4 },
+  { name:'야탑역', type:'subway', addr:'경기 성남시 분당구 야탑로 81', lat:37.4112, lng:127.1287, elevators:4 },
+  { name:'안양역', type:'subway', addr:'경기 안양시 만안구 안양로 286', lat:37.4035, lng:126.9224, elevators:5 },
+  { name:'수원역', type:'train', addr:'경기 수원시 팔달구 덕영대로 924', lat:37.2660, lng:127.0003, elevators:9 },
+  { name:'성남터미널', type:'terminal', addr:'경기 성남시 분당구 성남대로 925', lat:37.4090, lng:127.1290, elevators:3 },
+  { name:'의정부역', type:'subway', addr:'경기 의정부시 평화로 525', lat:37.7383, lng:127.0443, elevators:5 },
+  { name:'부평역', type:'subway', addr:'인천 부평구 부평문화로 7', lat:37.4894, lng:126.7244, elevators:6 },
+  { name:'인천시청역', type:'subway', addr:'인천 남동구 정각로 17', lat:37.4574, lng:126.7011, elevators:5 },
+  { name:'송도달빛축제공원역', type:'subway', addr:'인천 연수구 인천타워대로 326', lat:37.3859, lng:126.6428, elevators:3 },
+  { name:'용산역', type:'train', addr:'서울 용산구 한강대로23길 55', lat:37.5298, lng:126.9648, elevators:10 },
+  { name:'광명역', type:'train', addr:'경기 광명시 광명역로 21', lat:37.4163, lng:126.8854, elevators:8 },
+  { name:'천안아산역', type:'train', addr:'충남 아산시 배방읍 희망로 100', lat:36.7945, lng:127.1047, elevators:7 },
+  { name:'오송역', type:'train', addr:'충북 청주시 흥덕구 오송읍 오송가락로 123', lat:36.6162, lng:127.2878, elevators:8 },
+  { name:'대전역', type:'train', addr:'대전 동구 중앙로 215', lat:36.3319, lng:127.4345, elevators:9 },
+  { name:'동대구역', type:'train', addr:'대구 동구 동대구로 550', lat:35.8796, lng:128.6289, elevators:10 },
+  { name:'부산역', type:'train', addr:'부산 동구 중앙대로 206', lat:35.1147, lng:129.0397, elevators:11 },
+  { name:'광주송정역', type:'train', addr:'광주 광산구 송정로 38', lat:35.1413, lng:126.7929, elevators:7 },
+  { name:'전주역', type:'train', addr:'전북 전주시 덕진구 가리내로 1', lat:35.8361, lng:127.1510, elevators:6 },
+  { name:'여수엑스포역', type:'train', addr:'전남 여수시 박람회길 1', lat:34.7368, lng:127.7454, elevators:5 },
+  { name:'목포역', type:'train', addr:'전남 목포시 영산로 18', lat:34.7937, lng:126.3877, elevators:5 },
+  { name:'강릉역', type:'train', addr:'강원 강릉시 가작로 24', lat:37.7641, lng:128.8993, elevators:6 },
+  { name:'춘천역', type:'train', addr:'강원 춘천시 공지로 591', lat:37.8854, lng:127.7244, elevators:4 },
+  { name:'포항역', type:'train', addr:'경북 포항시 북구 흥해읍 KTX로 1', lat:36.1066, lng:129.3705, elevators:6 },
+  { name:'울산역', type:'train', addr:'울산 울주군 삼남읍 울산역로 177', lat:35.5519, lng:129.1370, elevators:7 },
+  { name:'서울고속버스터미널', type:'terminal', addr:'서울 서초구 신반포로 194', lat:37.5045, lng:127.0046, elevators:6 },
+  { name:'동서울종합터미널', type:'terminal', addr:'서울 광진구 강변역로 50', lat:37.5345, lng:127.0944, elevators:4 },
+  { name:'서울남부터미널', type:'terminal', addr:'서울 서초구 효령로 지하 308', lat:37.4847, lng:127.0153, elevators:3 },
+  { name:'센트럴시티터미널', type:'terminal', addr:'서울 서초구 신반포로 176', lat:37.5048, lng:127.0042, elevators:5 },
+  { name:'성남종합버스터미널', type:'terminal', addr:'경기 성남시 분당구 성남대로 925', lat:37.4090, lng:127.1290, elevators:3 },
+  { name:'대전복합터미널', type:'terminal', addr:'대전 동구 동서대로 1689', lat:36.3514, lng:127.4348, elevators:5 },
+  { name:'부산종합버스터미널', type:'terminal', addr:'부산 금정구 중앙대로 2238', lat:35.3119, lng:129.0810, elevators:4 },
+  { name:'동대구터미널', type:'terminal', addr:'대구 동구 동부로 149', lat:35.8779, lng:128.6285, elevators:5 },
+  { name:'광주종합버스터미널', type:'terminal', addr:'광주 서구 무진대로 904', lat:35.1597, lng:126.8810, elevators:4 },
+  { name:'유스퀘어터미널', type:'terminal', addr:'광주 서구 무진대로 904', lat:35.1599, lng:126.8800, elevators:4 },
+  { name:'전주시외버스터미널', type:'terminal', addr:'전북 전주시 덕진구 가리내로 162', lat:35.8295, lng:127.1364, elevators:3 },
+  { name:'대구서부정류장', type:'terminal', addr:'대구 남구 월배로 240', lat:35.8497, lng:128.5685, elevators:2 },
+  { name:'인천국제공항 제1터미널', type:'airport', addr:'인천 중구 공항로 272', lat:37.4602, lng:126.4407, elevators:24 },
+  { name:'인천국제공항 제2터미널', type:'airport', addr:'인천 중구 제2터미널대로 446', lat:37.4693, lng:126.4555, elevators:18 },
+  { name:'김포국제공항', type:'airport', addr:'서울 강서구 하늘길 112', lat:37.5586, lng:126.7944, elevators:14 },
+  { name:'김해국제공항', type:'airport', addr:'부산 강서구 공항진입로 108', lat:35.1796, lng:128.9380, elevators:10 },
+  { name:'제주국제공항', type:'airport', addr:'제주 제주시 공항로 2', lat:33.5113, lng:126.4930, elevators:12 },
+  { name:'대구국제공항', type:'airport', addr:'대구 동구 공항로 221', lat:35.8961, lng:128.6587, elevators:6 },
+  { name:'청주국제공항', type:'airport', addr:'충북 청주시 청원구 내수읍 오창대로 980', lat:36.7166, lng:127.4992, elevators:7 },
+  { name:'무안국제공항', type:'airport', addr:'전남 무안군 망운면 공항로 970-260', lat:34.9914, lng:126.3829, elevators:5 },
+  { name:'광주공항', type:'airport', addr:'광주 광산구 상무대로 420-25', lat:35.1264, lng:126.8086, elevators:4 },
+  { name:'양양국제공항', type:'airport', addr:'강원 양양군 손양면 공항로 201', lat:38.0613, lng:128.6691, elevators:4 },
+];
+const FAULT_REASONS = ['문 개폐 센서 이상','안전장치 점검 중','정기점검','제어반 정비','비상정지 발생','교체 작업 진행'];
+
+const STORAGE_KEY = 'elv_data_source';
+const STORAGE_KEYS = 'elv_data_keys';
+
+const S = {
+  map:null, clusterGroup:null, myMarker:null,
+  data:[], filtered:[],
+  filter:{ ok:true, fault:true, type:'all' },
+  search:'', selectedId:null, myLocation:null,
+  currentSource:'demo', apiKeys:{}, tempSource:'demo',
+  // 환경 자동 감지: 로컬 → localhost:8080 (Python proxy.py), 배포 → 같은 도메인 /api (Vercel Serverless)
+  proxyUrl: (typeof location !== 'undefined' &&
+             (location.protocol === 'file:'
+              || location.hostname === 'localhost'
+              || location.hostname === '127.0.0.1'))
+    ? 'http://localhost:8080'
+    : (typeof location !== 'undefined' ? location.origin : 'http://localhost:8080'),
+  tagoEndpoint: '',  // 사용자가 활용신청한 데이터셋 엔드포인트 (선택)
+  coordEndpoint: '', // 좌표 데이터셋 엔드포인트 (선택 — 가동정보와 결합)
+  coordIndex: {},    // 역명·역코드 → {lat,lng} 룩업 테이블
+  lastSkipped: 0,    // 마지막 로드 시 좌표 누락으로 제외된 건수
+  kricEndpoint: '',  // KRIC stationElevator 엔드포인트 (기본값으로 자동 채움)
+  kricOprCd: '',     // KRIC 호출할 운영기관 코드 (예: S1=서울교통공사)
+  kricLnCd: '',      // KRIC 호출할 노선 코드
+  kricStations: null, // kric-stations.json 로드된 데이터
+  geocodeCache: {},  // 역명 → 좌표 지오코딩 캐시 (localStorage 영구 저장)
+};
+
+function buildDemoData() {
+  const list = [];
+  FACILITIES.forEach((f, fi) => {
+    for (let i = 0; i < f.elevators; i++) {
+      const isFault = Math.random() < 0.10;
+      list.push({
+        id:`EV-${fi}-${i+1}`, facility:f.name, type:f.type, addr:f.addr,
+        hoNo:`${i+1}호기`, status: isFault ? 'fault' : 'ok',
+        lat:f.lat + (Math.random()-0.5)*0.0006,
+        lng:f.lng + (Math.random()-0.5)*0.0008,
+        reason: isFault ? FAULT_REASONS[Math.floor(Math.random()*FAULT_REASONS.length)] : null,
+        updatedAt: new Date(Date.now() - Math.floor(Math.random()*3600000)),
+      });
+    }
+  });
+  return list;
+}
+
+async function loadData(sourceKey) {
+  const src = DATA_SOURCES[sourceKey];
+  if (!src) { showToast('알 수 없는 데이터 소스'); return; }
+  try {
+    if (src.needsKey && !S.apiKeys[sourceKey]) {
+      throw new Error('API 키가 필요합니다');
+    }
+    showToast(`${src.name} 로드 중...`);
+    const items = await src.fetch(S.apiKeys[sourceKey]);
+    if (!items || items.length === 0) throw new Error('데이터가 비어있습니다');
+    S.data = items;
+    S.currentSource = sourceKey;
+    updateSourceBadge();
+    applyFilter();
+    const skipMsg = S.lastSkipped > 0 ? ` (좌표 미상 ${S.lastSkipped}건 제외)` : '';
+    showToast(`✓ ${src.badge} · ${items.length}건 표시${skipMsg}`);
+  } catch (e) {
+    console.error('데이터 로드 실패:', e);
+    const msg = e.message || String(e);
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+      showToast('⚠ CORS 차단됨 — 백엔드 프록시 필요 (데모로 복귀)');
+    } else {
+      showToast(`로드 실패: ${msg.slice(0,60)} (데모로 복귀)`);
+    }
+    S.data = await DATA_SOURCES.demo.fetch();
+    S.currentSource = 'demo';
+    updateSourceBadge();
+    applyFilter();
+  }
+}
+
+function updateSourceBadge() {
+  const src = DATA_SOURCES[S.currentSource];
+  const badge = document.getElementById('srcBadge');
+  const subtitle = document.getElementById('srcSubtitle');
+  badge.textContent = src.badge;
+  badge.classList.toggle('live', S.currentSource !== 'demo');
+  subtitle.textContent = src.subtitle;
+}
+
+// 설정 모달
+function renderSrcOptions() {
+  const container = document.getElementById('srcOptions');
+  const sourcesHtml = Object.values(DATA_SOURCES).map(src => {
+    const isActive = S.tempSource === src.key;
+    const keyVal = S.apiKeys[src.key] || '';
+    return `
+      <div class="src-option ${isActive ? 'active' : ''}" onclick="selectSource('${src.key}')">
+        <div class="src-option-radio"></div>
+        <div class="src-option-content">
+          <div class="src-option-name">${src.name}</div>
+          <div class="src-option-desc">${src.desc}</div>
+          ${src.needsKey ? `
+            <input type="text" class="src-key-input" id="key-${src.key}"
+                   placeholder="${escapeHtml(src.keyPlaceholder || 'API Key')}"
+                   value="${escapeHtml(keyVal)}"
+                   onclick="event.stopPropagation()"
+                   autocomplete="off" spellcheck="false">
+          ` : ''}
+          ${src.helpHtml ? `<div class="src-help">${src.helpHtml}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+  // 프록시 서버 URL + 엔드포인트 + 연결 테스트 영역
+  const proxyHtml = `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">
+        프록시 서버 주소 (실데이터 사용 시)
+      </div>
+      <input type="text" class="src-key-input" id="proxyUrlInput"
+             placeholder="http://localhost:8080"
+             value="${escapeHtml(S.proxyUrl)}"
+             autocomplete="off" spellcheck="false">
+      <div class="src-help" style="margin-top:6px">
+        <strong>프록시 서버 실행</strong>이 폴더의 <code>start-proxy.bat</code> 더블클릭. 검은 창에 "운수시설 승강기" 메시지 확인되면 OK
+      </div>
+
+      <div style="margin-top:14px;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">
+        가동정보 엔드포인트 (활용신청한 데이터셋 URL)
+      </div>
+      <input type="text" class="src-key-input" id="tagoEndpointInput"
+             placeholder="비워두면 기본 엔드포인트 사용"
+             value="${escapeHtml(S.tagoEndpoint || '')}"
+             autocomplete="off" spellcheck="false">
+      <div class="src-help" style="margin-top:6px">
+        <strong>사용 예</strong>data.go.kr 마이페이지의 "요청 URL" 복사. serviceKey 부분은 자동 추가
+      </div>
+
+      <div style="margin-top:14px;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">
+        카카오 REST API 키 (KRIC 사용 시 좌표 변환용)
+      </div>
+      <input type="text" class="src-key-input" id="kakaoKeyInput"
+             placeholder="카카오 디벨로퍼스에서 발급받은 REST API 키"
+             value="${escapeHtml(S.apiKeys.kakao || '')}"
+             autocomplete="off" spellcheck="false">
+      <div class="src-help" style="margin-top:6px">
+        <strong>발급</strong>developers.kakao.com → 앱 생성 → 앱 키 → REST API 키 복사<br>
+        <strong>무료 한도</strong>일 30만 건 (한 번 변환된 역은 자동 캐시되어 재호출 안 됨)
+      </div>
+
+      <div style="margin-top:14px;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">
+        KRIC 운영기관·노선 코드 (KRIC 사용 시)
+      </div>
+      <div style="display:flex;gap:6px">
+        <input type="text" class="src-key-input" id="kricOprCdInput" style="flex:1"
+               placeholder="기관코드 (예: S1)"
+               value="${escapeHtml(S.kricOprCd || '')}"
+               autocomplete="off" spellcheck="false">
+        <input type="text" class="src-key-input" id="kricLnCdInput" style="flex:1"
+               placeholder="노선코드 (예: S1)"
+               value="${escapeHtml(S.kricLnCd || '')}"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <div class="src-help" style="margin-top:6px">
+        <strong>예시</strong>서울교통공사 1호선 = S1/S1, 부산교통공사 1호선 = BS/1, 공항철도 = AR/A1<br>
+        <strong>참고</strong>운영기관·노선 코드는 받으신 엑셀의 RAIL_OPR_ISTT_CD·LN_CD 컬럼 참조
+      </div>
+
+      <div style="margin-top:14px;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">
+        좌표 데이터셋 엔드포인트 (선택 — 카카오 미사용 시)
+      </div>
+      <input type="text" class="src-key-input" id="coordEndpointInput"
+             placeholder="비워두면 내부 좌표 테이블 + 카카오 지오코딩 사용"
+             value="${escapeHtml(S.coordEndpoint || '')}"
+             autocomplete="off" spellcheck="false">
+      <div class="src-help" style="margin-top:6px">
+        <strong>언제 입력?</strong>좌표를 별도 공공 API에서 받고 싶을 때
+      </div>
+
+      <div style="margin-top:14px;display:flex;gap:8px">
+        <button class="modal-btn primary" style="flex:1" onclick="connectTest()">
+          🔍 연결 테스트 (응답 미리보기)
+        </button>
+      </div>
+      <div id="testResult" style="margin-top:10px;display:none"></div>
+    </div>
+  `;
+  container.innerHTML = sourcesHtml + proxyHtml;
+}
+
+// 연결 테스트 — 실제 API 응답을 받아 미리 보여줌
+async function connectTest() {
+  const resultEl = document.getElementById('testResult');
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = '<div style="padding:12px;font-size:12px;color:var(--text-muted)">⏳ 응답 대기 중... (최대 30초)</div>';
+
+  // 입력값 임시 적용
+  const proxyInput = document.getElementById('proxyUrlInput');
+  const proxyUrl = (proxyInput?.value.trim() || 'http://localhost:8080');
+
+  // 현재 선택된 소스에 따라 다른 키·엔드포인트 사용
+  const source = S.tempSource;
+  let apiKey = '';
+  let baseEndpoint = '';
+  let sourceLabel = '';
+
+  if (source === 'seoul') {
+    const keyInput = document.getElementById('key-seoul');
+    apiKey = keyInput?.value.trim() || '';
+    const endpointInput = document.getElementById('tagoEndpointInput');
+    const customEndpoint = endpointInput?.value.trim() || '';
+    // 서울 열린데이터광장 표준 URL: /{키}/xml/SeoulMetroFaciInfo/1/10/  (테스트는 10건만)
+    baseEndpoint = customEndpoint
+      || `http://openapi.seoul.go.kr:8088/${apiKey}/xml/SeoulMetroFaciInfo/1/10/`;
+    sourceLabel = '서울교통공사';
+    if (!apiKey) {
+      resultEl.innerHTML = '<div style="padding:12px;background:#fdecea;border-radius:6px;font-size:12px;color:#7a1f1c">⚠ 서울 열린데이터광장 인증키를 먼저 입력해주세요 (data.seoul.go.kr 발급)</div>';
+      return;
+    }
+  } else if (source === 'tago') {
+    const keyInput = document.getElementById('key-tago');
+    apiKey = keyInput?.value.trim() || '';
+    const endpointInput = document.getElementById('tagoEndpointInput');
+    baseEndpoint = (endpointInput?.value.trim()
+      || 'http://apis.data.go.kr/B551177/StatusOfPassengerWlfrFcltyInfo/getPassengerWlfrFcltyInfo?numOfRows=10&pageNo=1&type=json');
+    sourceLabel = 'TAGO';
+    if (!apiKey) {
+      resultEl.innerHTML = '<div style="padding:12px;background:#fdecea;border-radius:6px;font-size:12px;color:#7a1f1c">⚠ TAGO 인증키를 먼저 입력해주세요</div>';
+      return;
+    }
+  } else if (source === 'kric') {
+    const keyInput = document.getElementById('key-kric');
+    apiKey = keyInput?.value.trim() || '';
+    const oprCd = document.getElementById('kricOprCdInput')?.value.trim() || 'S1';
+    const lnCd = document.getElementById('kricLnCdInput')?.value.trim() || '1';
+    baseEndpoint = `https://openapi.kric.go.kr/openapi/convenientInfo/stationElevator?format=json&railOprIsttCd=${encodeURIComponent(oprCd)}&lnCd=${encodeURIComponent(lnCd)}`;
+    sourceLabel = `KRIC (${oprCd}/${lnCd})`;
+    if (!apiKey) {
+      resultEl.innerHTML = '<div style="padding:12px;background:#fdecea;border-radius:6px;font-size:12px;color:#7a1f1c">⚠ KRIC 인증키를 먼저 입력해주세요 (data.kric.go.kr에서 발급)</div>';
+      return;
+    }
+  } else if (source === 'demo') {
+    resultEl.innerHTML = '<div style="padding:12px;background:#e8f8ef;border-radius:6px;font-size:12px;color:#1b5e20">✓ 데모 모드는 외부 API 호출이 없어 연결 테스트가 필요하지 않습니다. 그냥 [적용] 버튼을 누르세요</div>';
+    return;
+  } else {
+    resultEl.innerHTML = '<div style="padding:12px;background:#fdecea;border-radius:6px;font-size:12px;color:#7a1f1c">⚠ 지원되지 않는 데이터 소스입니다</div>';
+    return;
+  }
+
+  // 헬스체크 먼저
+  try {
+    const hc = await fetch(`${proxyUrl}/health`, { signal: AbortSignal.timeout(3000) });
+    if (!hc.ok) throw new Error('헬스체크 실패');
+  } catch (e) {
+    resultEl.innerHTML = `<div style="padding:12px;background:#fdecea;border-radius:6px;font-size:12px;color:#7a1f1c">
+      ⚠ 프록시 서버 응답 없음 (${escapeHtml(proxyUrl)})<br>
+      <strong>해결</strong>: 작업폴더의 <code>start-proxy.bat</code>을 더블클릭해 검은 창을 켜둔 상태로 다시 시도하세요
+    </div>`;
+    return;
+  }
+
+  // 실제 호출 — 서울 데이터광장은 키가 path에, TAGO/KRIC는 ?serviceKey= 형식
+  const sep = baseEndpoint.includes('?') ? '&' : '?';
+  const keyAlreadyEmbedded = baseEndpoint.includes('serviceKey=')
+                          || (apiKey && baseEndpoint.includes(apiKey));
+  const withKey = keyAlreadyEmbedded
+    ? baseEndpoint
+    : `${baseEndpoint}${sep}serviceKey=${apiKey}`;
+  const proxiedUrl = `${proxyUrl}/api/proxy?url=${encodeURIComponent(withKey)}`;
+  // 로그 출력 시 키 마스킹
+  const logUrl = withKey
+    .replace(/serviceKey=[^&]+/, 'serviceKey=***')
+    .replace(apiKey, '***');
+  console.log(`[연결테스트] ${sourceLabel} 호출:`, logUrl);
+
+  try {
+    const res = await fetch(proxiedUrl);
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    const text = await res.text();
+    const isXml = ct.includes('xml') || text.trim().startsWith('<');
+    let json = null;
+    let parseError = null;
+    try {
+      json = isXml ? parseXmlToJson(text) : JSON.parse(text);
+    } catch (e) {
+      parseError = e.message;
+    }
+
+    // 응답 진단
+    const diagnostics = [];
+    diagnostics.push(`<strong>HTTP 상태</strong> ${res.status} ${res.ok ? '✓' : '✗'}`);
+    diagnostics.push(`<strong>Content-Type</strong> ${escapeHtml(ct || '미상')}`);
+    diagnostics.push(`<strong>응답 크기</strong> ${text.length.toLocaleString()} 문자`);
+    diagnostics.push(`<strong>형식</strong> ${isXml ? 'XML (자동 변환)' : 'JSON'}`);
+
+    let itemsCount = 0;
+    let firstItem = null;
+    let mapResult = null;
+    if (json) {
+      try {
+        const items = findItemArray(json);
+        itemsCount = items.length;
+        firstItem = items[0] || null;
+        diagnostics.push(`<strong>탐지된 항목 수</strong> ${itemsCount}건`);
+        if (itemsCount > 0) {
+          try {
+            const mapped = mapTagoToItems(json);
+            mapResult = `<strong>매핑 성공</strong> ${mapped.length}건 (위경도 보유)`;
+          } catch (me) {
+            mapResult = `<strong>매핑 실패</strong> ${escapeHtml(me.message)}`;
+          }
+        }
+      } catch (e) { /* ignore */ }
+
+      const resultCode = json?.response?.header?.resultCode || json?.resultCode;
+      const resultMsg = json?.response?.header?.resultMsg || json?.resultMsg;
+      if (resultCode) {
+        diagnostics.push(`<strong>공공API 결과코드</strong> ${escapeHtml(resultCode)} ${resultMsg ? '— ' + escapeHtml(resultMsg) : ''}`);
+      }
+    }
+
+    const previewText = json ? JSON.stringify(json, null, 2).slice(0, 2000) : text.slice(0, 2000);
+    const truncated = (json ? JSON.stringify(json, null, 2).length : text.length) > 2000;
+
+    const isSuccess = res.ok && itemsCount > 0 && !parseError;
+    const bgColor = isSuccess ? '#e8f8ef' : (res.ok ? '#fff8e1' : '#fdecea');
+    const textColor = isSuccess ? '#1b5e20' : (res.ok ? '#7a5e00' : '#7a1f1c');
+    const icon = isSuccess ? '✓' : (res.ok ? '⚠' : '✗');
+
+    resultEl.innerHTML = `
+      <div style="padding:12px;background:${bgColor};border-radius:6px;font-size:11px;color:${textColor};line-height:1.7">
+        ${diagnostics.map(d => `<div>${icon} ${d}</div>`).join('')}
+        ${parseError ? `<div>✗ <strong>파싱 오류</strong> ${escapeHtml(parseError)}</div>` : ''}
+        ${mapResult ? `<div>${icon} ${mapResult}</div>` : ''}
+      </div>
+      ${firstItem ? `
+        <div style="margin-top:8px;padding:10px;background:#f5f7fa;border-radius:6px;font-size:11px">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--text)">첫 항목의 필드명 (이 이름들을 mapTagoToItems()에서 인식해야 합니다)</div>
+          <div style="font-family:monospace;font-size:10px;color:var(--text-muted);word-break:break-all">
+            ${Object.keys(firstItem).map(k => escapeHtml(k)).join(', ')}
+          </div>
+        </div>
+      ` : ''}
+      <details style="margin-top:8px">
+        <summary style="cursor:pointer;font-size:11px;color:var(--text-muted);padding:6px 0">
+          📋 원본 응답 미리보기 (처음 2000자) ${truncated ? '— 잘림' : ''}
+        </summary>
+        <pre style="margin-top:6px;padding:10px;background:#1a2332;color:#a8c0d8;font-size:10px;border-radius:6px;overflow:auto;max-height:300px;font-family:monospace;line-height:1.5">${escapeHtml(previewText)}</pre>
+      </details>
+    `;
+  } catch (e) {
+    resultEl.innerHTML = `<div style="padding:12px;background:#fdecea;border-radius:6px;font-size:12px;color:#7a1f1c">
+      ✗ <strong>요청 실패</strong> ${escapeHtml(e.message || String(e))}
+    </div>`;
+  }
+}
+function selectSource(key) { S.tempSource = key; renderSrcOptions(); }
+function openSettings() {
+  S.tempSource = S.currentSource;
+  renderSrcOptions();
+  document.getElementById('settingsModal').classList.add('show');
+}
+function closeSettings() { document.getElementById('settingsModal').classList.remove('show'); }
+async function applySettings() {
+  Object.values(DATA_SOURCES).forEach(src => {
+    if (src.needsKey) {
+      const input = document.getElementById(`key-${src.key}`);
+      if (input) S.apiKeys[src.key] = input.value.trim();
+    }
+  });
+  // 프록시 URL 저장
+  const proxyInput = document.getElementById('proxyUrlInput');
+  if (proxyInput) {
+    S.proxyUrl = proxyInput.value.trim() || 'http://localhost:8080';
+    localStorage.setItem('elv_proxy_url', S.proxyUrl);
+  }
+  // TAGO 엔드포인트 저장
+  const endpointInput = document.getElementById('tagoEndpointInput');
+  if (endpointInput) {
+    S.tagoEndpoint = endpointInput.value.trim();
+    localStorage.setItem('elv_tago_endpoint', S.tagoEndpoint);
+  }
+  // 좌표 엔드포인트 저장
+  const coordInput = document.getElementById('coordEndpointInput');
+  if (coordInput) {
+    S.coordEndpoint = coordInput.value.trim();
+    localStorage.setItem('elv_coord_endpoint', S.coordEndpoint);
+  }
+  // 카카오 REST API 키 저장
+  const kakaoInput = document.getElementById('kakaoKeyInput');
+  if (kakaoInput) {
+    S.apiKeys.kakao = kakaoInput.value.trim();
+  }
+  // KRIC 운영기관·노선 코드 저장
+  const oprInput = document.getElementById('kricOprCdInput');
+  const lnInput = document.getElementById('kricLnCdInput');
+  if (oprInput) { S.kricOprCd = oprInput.value.trim(); localStorage.setItem('elv_kric_opr', S.kricOprCd); }
+  if (lnInput) { S.kricLnCd = lnInput.value.trim(); localStorage.setItem('elv_kric_ln', S.kricLnCd); }
+  localStorage.setItem(STORAGE_KEY, S.tempSource);
+  localStorage.setItem(STORAGE_KEYS, JSON.stringify(S.apiKeys));
+  closeSettings();
+  await loadData(S.tempSource);
+}
+
+// 지도
+function initMap() {
+  S.map = L.map('map', {
+    center: [36.5, 127.8], zoom: 7, minZoom: 6, maxZoom: 18,
+    zoomControl: false, attributionControl: true,
+  });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19,
+  }).addTo(S.map);
+  L.control.zoom({ position: 'bottomright' }).addTo(S.map);
+  S.map.on('click', () => closeSheet());
+
+  S.clusterGroup = L.markerClusterGroup({
+    showCoverageOnHover: false, spiderfyOnMaxZoom: true, maxClusterRadius: 50,
+    iconCreateFunction: function(cluster) {
+      const childMarkers = cluster.getAllChildMarkers();
+      const hasFault = childMarkers.some(m => m.options.itemStatus === 'fault');
+      const cls = 'marker-cluster' + (hasFault ? ' has-fault' : '');
+      return L.divIcon({
+        html: `<div><span>${cluster.getChildCount()}</span></div>`,
+        className: cls, iconSize: [38, 38],
+      });
+    },
+  });
+  S.map.addLayer(S.clusterGroup);
+  setTimeout(() => S.map.invalidateSize(false), 100);
+  setTimeout(() => S.map.invalidateSize(false), 400);
+}
+
+function renderMarkers() {
+  if (!S.map || !S.clusterGroup) return;
+  S.clusterGroup.clearLayers();
+  const newMarkers = S.filtered.map(item => {
+    const icon = L.divIcon({
+      className: '', html: `<div class="marker-pin ${item.status}"></div>`,
+      iconSize: [20, 20], iconAnchor: [10, 10],
+    });
+    const marker = L.marker([item.lat, item.lng], {
+      icon: icon, itemStatus: item.status,
+      title: `${item.facility} ${item.hoNo}`,
+    });
+    marker.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      openSheet(item);
+    });
+    return marker;
+  });
+  S.clusterGroup.addLayers(newMarkers);
+}
+
+// 필터링 / 통계
+function applyFilter() {
+  const q = S.search.trim().toLowerCase();
+  S.filtered = S.data.filter(d => {
+    if (d.status === 'ok' && !S.filter.ok) return false;
+    if (d.status === 'fault' && !S.filter.fault) return false;
+    if (S.filter.type !== 'all' && d.type !== S.filter.type) return false;
+    if (q && !d.facility.toLowerCase().includes(q) && !d.addr.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  renderMarkers();
+  updateStats();
+  updateNearStat();
+}
+function updateStats() {
+  const ok = S.filtered.filter(d=>d.status==='ok').length;
+  const fault = S.filtered.filter(d=>d.status==='fault').length;
+  document.getElementById('cOk').textContent = ok;
+  document.getElementById('cFault').textContent = fault;
+  document.getElementById('cTotal').textContent = S.filtered.length;
+}
+function setFilter(kind) {
+  if (kind==='all') { S.filter.ok=true; S.filter.fault=true; }
+  else if (kind==='ok') S.filter.ok=!S.filter.ok;
+  else if (kind==='fault') S.filter.fault=!S.filter.fault;
+  document.getElementById('chip-ok').classList.toggle('active', S.filter.ok);
+  document.getElementById('chip-fault').classList.toggle('active', S.filter.fault);
+  document.getElementById('chip-all').classList.toggle('active', S.filter.ok && S.filter.fault);
+  applyFilter();
+}
+function setTypeFilter(t) {
+  S.filter.type = (S.filter.type === t) ? 'all' : t;
+  ['subway','train','terminal','airport'].forEach(k => {
+    document.getElementById(`chip-${k}`).classList.toggle('active', S.filter.type === k);
+  });
+  applyFilter();
+}
+function filterOnly(kind) {
+  if (kind === 'ok') { S.filter.ok = true; S.filter.fault = false; }
+  else if (kind === 'fault') { S.filter.ok = false; S.filter.fault = true; }
+  document.getElementById('chip-ok').classList.toggle('active', S.filter.ok);
+  document.getElementById('chip-fault').classList.toggle('active', S.filter.fault);
+  document.getElementById('chip-all').classList.toggle('active', S.filter.ok && S.filter.fault);
+  applyFilter();
+  showToast(kind === 'fault' ? '운행불가만 표시' : '운행중만 표시');
+}
+function resetFilter() {
+  S.filter.ok = true; S.filter.fault = true; S.filter.type = 'all';
+  ['ok','fault'].forEach(k => document.getElementById(`chip-${k}`).classList.add('active'));
+  document.getElementById('chip-all').classList.add('active');
+  ['subway','train','terminal','airport'].forEach(k => document.getElementById(`chip-${k}`).classList.remove('active'));
+  applyFilter();
+}
+
+// 내 위치
+function locateMe() {
+  if (!navigator.geolocation) { showToast('이 브라우저는 위치 기능을 지원하지 않습니다'); return; }
+  const btn = document.getElementById('locateBtn');
+  btn.classList.add('locating');
+  showToast('현재 위치 확인 중...');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      btn.classList.remove('locating');
+      const { latitude, longitude } = pos.coords;
+      S.myLocation = { lat: latitude, lng: longitude };
+      if (S.myMarker) S.map.removeLayer(S.myMarker);
+      const myIcon = L.divIcon({ className: '', html: `<div class="my-loc-pin"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+      S.myMarker = L.marker([latitude, longitude], { icon: myIcon, zIndexOffset: 2000, title: '내 위치' }).addTo(S.map);
+      S.map.setView([latitude, longitude], 14, { animate: true });
+      updateNearStat();
+      const nearFault = countNearFault(5);
+      showToast(nearFault > 0 ? `내 위치 5km 이내 운행불가: ${nearFault}건` : '내 위치 5km 이내 운행불가 없음 ✓');
+    },
+    (err) => {
+      btn.classList.remove('locating');
+      let msg = '위치를 가져올 수 없습니다';
+      if (err.code === 1) msg = '위치 권한이 거부되었습니다';
+      else if (err.code === 2) msg = '위치 정보를 사용할 수 없습니다';
+      else if (err.code === 3) msg = '위치 확인 시간 초과';
+      showToast(msg);
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+  );
+}
+function zoomToMyLocation() {
+  if (!S.myLocation) { locateMe(); return; }
+  S.map.setView([S.myLocation.lat, S.myLocation.lng], 14, { animate: true });
+}
+function distanceKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLng = (lng2-lng1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function countNearFault(radiusKm) {
+  if (!S.myLocation) return 0;
+  return S.data.filter(d => d.status === 'fault' &&
+    distanceKm(S.myLocation.lat, S.myLocation.lng, d.lat, d.lng) <= radiusKm).length;
+}
+function updateNearStat() {
+  const nearStat = document.getElementById('nearStat');
+  const nearDiv = document.getElementById('nearDiv');
+  if (!S.myLocation) { nearStat.classList.remove('show'); nearDiv.style.display = 'none'; return; }
+  const cnt = countNearFault(5);
+  document.getElementById('cNear').textContent = cnt;
+  nearStat.classList.add('show');
+  nearDiv.style.display = 'block';
+}
+
+// 시트
+function openSheet(item) {
+  S.selectedId = item.id;
+  document.getElementById('sheetTitle').textContent = `${item.facility} ${item.hoNo}`;
+  document.getElementById('sheetSubtitle').textContent = item.addr;
+  const indicator = document.getElementById('sheetIndicator');
+  const badge = document.getElementById('sheetBadge');
+  if (item.status === 'fault') {
+    indicator.style.background = 'var(--fault)';
+    badge.textContent = '운행불가';
+    badge.className = 'sheet-badge fault';
+  } else {
+    indicator.style.background = 'var(--ok)';
+    badge.textContent = '운행중';
+    badge.className = 'sheet-badge ok';
+  }
+  const typeLabel = { subway:'지하철역', train:'기차역', terminal:'버스터미널', airport:'공항' }[item.type] || '-';
+  // 외부 API 데이터를 innerHTML에 주입하기 전 모두 escape (XSS 방지)
+  const rows = [['시설 유형', typeLabel],['승강기 번호', item.id],['주소', item.addr]];
+  let bodyHtml = rows.map(([k,v])=>`<div class="sheet-row"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(v)}</span></div>`).join('');
+  if (item.status === 'fault') bodyHtml += `<div class="sheet-fault-reason"><strong>운행불가 사유</strong>${escapeHtml(item.reason || '사유 미상')}</div>`;
+  if (S.myLocation) {
+    const d = distanceKm(S.myLocation.lat, S.myLocation.lng, item.lat, item.lng);
+    const dStr = d < 1 ? `${(d*1000).toFixed(0)}m` : `${d.toFixed(1)}km`;
+    bodyHtml += `<span class="sheet-distance">📍 내 위치에서 ${dStr}</span>`;
+  }
+  const updatedStr = (item.updatedAt && typeof item.updatedAt.toLocaleString === 'function')
+    ? item.updatedAt.toLocaleString('ko-KR') : '갱신시각 미상';
+  bodyHtml += `<div class="sheet-updated">최종 갱신: ${escapeHtml(updatedStr)}</div>`;
+  document.getElementById('sheetBody').innerHTML = bodyHtml;
+  document.getElementById('sheet').classList.add('open');
+  const offsetY = window.innerWidth < 768 ? -0.003 : 0;
+  S.map.panTo([item.lat + offsetY, item.lng], { animate: true });
+}
+function closeSheet() {
+  document.getElementById('sheet').classList.remove('open');
+  S.selectedId = null;
+}
+
+// 검색
+function bindSearch() {
+  const input = document.getElementById('searchInput');
+  let timer = null;
+  input.addEventListener('input', e => {
+    S.search = e.target.value;
+    clearTimeout(timer);
+    timer = setTimeout(() => applyFilter(), 200);
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.keyCode === 13) {
+      e.preventDefault();
+      clearTimeout(timer);
+      S.search = input.value;
+      applyFilter();
+      handleSearchEnter();
+      input.blur();
+    }
+  });
+}
+function handleSearchEnter() {
+  if (!S.search.trim()) { showToast('검색어를 입력해주세요'); return; }
+  if (S.filtered.length === 0) { showToast(`'${S.search}' 검색 결과가 없습니다`); return; }
+  if (!S.map) return;
+  const facilities = {};
+  S.filtered.forEach(d => { (facilities[d.facility] = facilities[d.facility] || []).push(d); });
+  const firstFacility = S.filtered[0].facility;
+  const items = facilities[firstFacility];
+  const lat = items.reduce((s,d)=>s+d.lat,0)/items.length;
+  const lng = items.reduce((s,d)=>s+d.lng,0)/items.length;
+  S.map.setView([lat, lng], 16, { animate: true });
+  showToast(`${firstFacility} 이동 · ${S.filtered.length}건 검색`);
+}
+
+// 새로고침
+async function refreshData() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spin');
+  setTimeout(() => btn.classList.remove('spin'), 800);
+
+  if (S.currentSource === 'demo') {
+    const newFaults = [];
+    S.data.forEach(d => {
+      if (Math.random() < 0.05) {
+        const wasOk = d.status === 'ok';
+        d.status = wasOk ? 'fault' : 'ok';
+        d.reason = d.status === 'fault' ? FAULT_REASONS[Math.floor(Math.random()*FAULT_REASONS.length)] : null;
+        d.updatedAt = new Date();
+        if (wasOk && d.status === 'fault') newFaults.push(d.facility);
+      }
+    });
+    applyFilter();
+    if (newFaults.length > 0) {
+      const uniq = [...new Set(newFaults)];
+      showToast(`⚠ 새 운행불가: ${uniq.slice(0,2).join(', ')}${uniq.length>2?` 외 ${uniq.length-2}곳`:''}`);
+    } else {
+      showToast(`갱신 완료 · ${new Date().toLocaleTimeString('ko-KR')}`);
+    }
+  } else {
+    await loadData(S.currentSource);
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+async function boot() {
+  setAppHeight();
+  // 마지막 사용 데이터 소스 복원, 없으면 데모로 시작 (사용자가 키 입력 후 'seoul' 선택)
+  const savedSrc = localStorage.getItem(STORAGE_KEY) || 'demo';
+  const savedKeys = localStorage.getItem(STORAGE_KEYS);
+  const savedProxy = localStorage.getItem('elv_proxy_url');
+  const savedEndpoint = localStorage.getItem('elv_tago_endpoint');
+  const savedCoordEp = localStorage.getItem('elv_coord_endpoint');
+  const savedKricOpr = localStorage.getItem('elv_kric_opr');
+  const savedKricLn = localStorage.getItem('elv_kric_ln');
+  const savedGeocode = localStorage.getItem('elv_geocode_cache');
+  if (savedKeys) { try { S.apiKeys = JSON.parse(savedKeys); } catch {} }
+  if (savedProxy) S.proxyUrl = savedProxy;
+  if (savedEndpoint) S.tagoEndpoint = savedEndpoint;
+  if (savedCoordEp) S.coordEndpoint = savedCoordEp;
+  if (savedKricOpr) S.kricOprCd = savedKricOpr;
+  if (savedKricLn) S.kricLnCd = savedKricLn;
+  if (savedGeocode) { try { S.geocodeCache = JSON.parse(savedGeocode); } catch {} }
+  // 좌표 인덱스 초기화 (FACILITIES + 지오코딩 캐시 결합)
+  S.coordIndex = buildStationCoordIndex();
+  Object.keys(S.geocodeCache).forEach(k => {
+    if (!S.coordIndex[k]) S.coordIndex[k] = S.geocodeCache[k];
+    const short = k.replace(/역$/, '');
+    if (short && !S.coordIndex[short]) S.coordIndex[short] = S.geocodeCache[k];
+  });
+  initMap();
+  bindSearch();
+  await loadData(savedSrc);
+}
+
+window.addEventListener('resize', setAppHeight);
+window.addEventListener('orientationchange', () => setTimeout(setAppHeight, 200));
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', setAppHeight);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
+
+// ════════════════════════════════════════════════════════════
+//  PWA 서비스 워커 등록 (휴대폰 홈화면 설치 + 오프라인 폴백)
+// ════════════════════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      // file:// 프로토콜에서는 서비스 워커 사용 불가
+      if (location.protocol === 'file:') {
+        console.log('[PWA] file:// 프로토콜에서는 서비스 워커가 비활성화됩니다. http(s):// 또는 localhost로 접속하세요.');
+        return;
+      }
+      const reg = await navigator.serviceWorker.register('./service-worker.js', { scope: './' });
+      console.log('[PWA] 서비스 워커 등록 성공:', reg.scope);
+      // 새 버전 감지 시 자동 갱신
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            console.log('[PWA] 새 버전이 준비되었습니다. 새로고침 시 적용됩니다.');
+          }
+        });
+      });
+    } catch (e) {
+      console.warn('[PWA] 서비스 워커 등록 실패:', e.message);
+    }
+  });
+
+  // 홈화면 설치 안내 (Android Chrome)
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    // 첫 방문에서 너무 빨리 띄우지 말고, 사용자 상호작용 한 번 이후에
+    setTimeout(() => {
+      if (deferredPrompt && !localStorage.getItem('elv_install_prompted')) {
+        showToast('💡 홈화면에 설치하면 앱처럼 사용할 수 있습니다 (메뉴 → "홈화면에 추가")');
+        localStorage.setItem('elv_install_prompted', '1');
+      }
+    }, 8000);
+  });
+}
+</script>
+
+</body>
+</html>
