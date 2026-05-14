@@ -12,7 +12,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-apple-touch.png">
 <link rel="manifest" href="manifest.json">
-<title>전국 운수시설 승강기 운행정보</title>
+<title>서울교통공사 관할역사 승강기 운행정보 PWA</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
@@ -297,8 +297,8 @@
 <header>
   <div class="h-icon">🛗</div>
   <div style="flex:1;min-width:0">
-    <div class="h-title">운수시설 승강기 운행정보 <span class="h-badge" id="srcBadge">DEMO</span></div>
-    <div class="h-sub" id="srcSubtitle">전국 지하철·기차·터미널·공항</div>
+    <div class="h-title">서울교통공사 관할역사 승강기 운행정보 PWA <span class="h-badge" id="srcBadge">DEMO</span></div>
+    <div class="h-sub" id="srcSubtitle">서울교통공사 관할 1·2·3·4·5·6·7·8호선</div>
   </div>
   <button class="h-btn" id="settingsBtn" onclick="openSettings()" aria-label="설정" title="데이터 소스 설정">⚙</button>
   <button class="h-btn" id="refreshBtn" onclick="refreshData()" aria-label="새로고침" title="새로고침">↻</button>
@@ -308,7 +308,7 @@
   <div id="map"></div>
 
   <div class="search-bar">
-    <input type="text" class="search-input" id="searchInput" placeholder="🔍 환승역은 '역이름 + N호선' (예: 창동역 4호선)" inputmode="search" enterkeyhint="search">
+    <input type="text" class="search-input" id="searchInput" placeholder="🔍 시설명·역명 검색 (예: 창동역, 노원역)" inputmode="search" enterkeyhint="search">
   </div>
 
   <div class="filter-chips">
@@ -389,7 +389,7 @@ const DATA_SOURCES = {
     key:'demo', name:'데모 (시뮬레이션 데이터)',
     desc:'전국 70여 개 시설 · 약 350건의 가상 승강기 데이터로 즉시 작동. 키 불필요.',
     badge:'DEMO', needsKey:false,
-    subtitle:'전국 지하철·기차·터미널·공항 (시뮬레이션)',
+    subtitle:'서울교통공사 관할 1·2·3·4·5·6·7·8호선 (시뮬레이션)',
     fetch: async () => buildDemoData(),
   },
 
@@ -399,7 +399,7 @@ const DATA_SOURCES = {
     badge:'SEOUL', needsKey:true,
     keyPlaceholder:'서울 열린데이터광장 인증키',
     helpHtml:'<strong>키 발급</strong>data.seoul.go.kr 회원가입 → 인증키 신청 → 자동발급<br><strong>실행</strong>이 폴더의 <code>start-proxy.bat</code> 더블클릭 → 검은 창 유지<br><strong>좌표</strong>카카오 지오코딩 자동 활용 (아래 카카오 키 입력)',
-    subtitle:'서울 1~8호선 실시간 가동현황 (USE_YN)',
+    subtitle:'서울교통공사 관할 1·2·3·4·5·6·7·8호선',
     fetch: async (apiKey) => {
       const proxyBase = S.proxyUrl || 'http://localhost:8080';
 
