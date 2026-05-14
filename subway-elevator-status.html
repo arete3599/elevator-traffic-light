@@ -401,37 +401,70 @@ const DATA_SOURCES = {
     subtitle:'서울 1~8호선 실시간 가동현황 (USE_YN)',
     fetch: async (apiKey) => {
       const proxyBase = S.proxyUrl || 'http://localhost:8080';
-      // 서울 열린데이터광장 표준 URL 형식 (사용자가 직접 URL 입력 시 그것 우선)
-      const endpoint = S.tagoEndpoint
-        || `http://openapi.seoul.go.kr:8088/${apiKey}/xml/SeoulMetroFaciInfo/1/1000/`;
-      const proxiedUrl = `${proxyBase}/api/proxy?url=${encodeURIComponent(endpoint)}`;
-      const res = await fetch(proxiedUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status} — 프록시 또는 서울 열린데이터광장 오류`);
 
-      const ct = (res.headers.get('content-type') || '').toLowerCase();
-      const text = await res.text();
-      let json;
-      if (ct.includes('xml') || text.trim().startsWith('<')) {
-        json = parseXmlToJson(text);
-        console.log('[서울] XML 응답을 JSON으로 변환했습니다');
-      } else {
-        try { json = JSON.parse(text); }
-        catch (e) { throw new Error('응답 파싱 실패 — ' + text.slice(0,80)); }
+      // 서울 열린데이터광장은 한 번에 최대 1,000건만 반환 → list_total_count를 보고 페이징 처리
+      // 사용자가 직접 URL을 tagoEndpoint에 입력했다면 그건 단일 호출로 사용 (페이징 미지원)
+      const PAGE_SIZE = 1000;
+      const customEp = S.tagoEndpoint;
+
+      // 한 페이지 호출하는 헬퍼 — JSON 파싱까지 수행
+      async function fetchPage(start, end) {
+        const ep = customEp || `http://openapi.seoul.go.kr:8088/${apiKey}/xml/SeoulMetroFaciInfo/${start}/${end}/`;
+        const url = `${proxyBase}/api/proxy?url=${encodeURIComponent(ep)}`;
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`HTTP ${r.status} — 프록시 또는 서울 열린데이터광장 오류`);
+        const text = await r.text();
+        let pj;
+        if (text.trim().startsWith('<')) pj = parseXmlToJson(text);
+        else { try { pj = JSON.parse(text); } catch { throw new Error('응답 파싱 실패 — ' + text.slice(0,80)); } }
+        // 서울 표준 에러 감지
+        const code = pj?.RESULT?.CODE || pj?.SeoulMetroFaciInfo?.RESULT?.CODE;
+        if (code && code !== 'INFO-000' && code !== 'INFO-0' && !String(code).includes('NORMAL')) {
+          const msg = pj?.RESULT?.MESSAGE || pj?.SeoulMetroFaciInfo?.RESULT?.MESSAGE || '알 수 없는 오류';
+          throw new Error(`서울 API 오류 [${code}] ${msg}`);
+        }
+        return pj;
       }
 
-      // 서울 열린데이터광장 표준 에러 응답 감지
-      const code = json?.RESULT?.CODE || json?.SeoulMetroFaciInfo?.RESULT?.CODE;
-      if (code && code !== 'INFO-000' && code !== 'INFO-0' && !String(code).includes('NORMAL')) {
-        const msg = json?.RESULT?.MESSAGE || json?.SeoulMetroFaciInfo?.RESULT?.MESSAGE || '알 수 없는 오류';
-        throw new Error(`서울 API 오류 [${code}] ${msg}`);
+      // 1차 호출: 첫 1,000건 + list_total_count 확인
+      const firstJson = await fetchPage(1, PAGE_SIZE);
+      const totalCount = parseInt(
+        firstJson?.SeoulMetroFaciInfo?.list_total_count
+          || firstJson?.list_total_count
+          || '0', 10
+      );
+      let allRows = firstJson?.SeoulMetroFaciInfo?.row || firstJson?.row || [];
+      if (!Array.isArray(allRows)) allRows = allRows ? [allRows] : [];
+      console.log(`[서울] 전체 ${totalCount}건 중 첫 페이지 ${allRows.length}건 수신`);
+
+      // 2차 이후: 사용자가 직접 endpoint 지정한 경우는 추가 호출 안 함 (페이지 파라미터 형식 알 수 없음)
+      if (!customEp && totalCount > PAGE_SIZE) {
+        const numPages = Math.ceil(totalCount / PAGE_SIZE);
+        for (let p = 2; p <= numPages; p++) {
+          const start = (p - 1) * PAGE_SIZE + 1;
+          const end = Math.min(p * PAGE_SIZE, totalCount);
+          try {
+            const pj = await fetchPage(start, end);
+            let rows = pj?.SeoulMetroFaciInfo?.row || pj?.row || [];
+            if (!Array.isArray(rows)) rows = rows ? [rows] : [];
+            allRows = allRows.concat(rows);
+            console.log(`[서울] 페이지 ${p} (${start}~${end}) ${rows.length}건 수신`);
+          } catch (e) {
+            console.warn(`[서울] 페이지 ${p} 수신 실패 (계속 진행):`, e.message);
+          }
+        }
       }
+      console.log(`[서울] 페이징 완료: 총 ${allRows.length}건 수신 (목표 ${totalCount}건)`);
+
+      // 모든 페이지를 단일 JSON으로 합치기
+      const merged = { SeoulMetroFaciInfo: { row: allRows, list_total_count: totalCount } };
 
       // 배포 환경(서버 키 사용) 또는 카카오 키 입력 시 일괄 지오코딩으로 좌표 캐시 채우기
       if (S.apiKeys.kakao || IS_HOSTED) {
-        try { await ensureGeocodeCache(json); }
+        try { await ensureGeocodeCache(merged); }
         catch (e) { console.warn('[지오코딩] 일괄 처리 실패:', e.message); }
       }
-      return mapTagoToItems(json);
+      return mapTagoToItems(merged);
     },
   },
 
