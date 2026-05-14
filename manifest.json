@@ -1,7 +1,7 @@
 {
-  "name": "전국 운수시설 승강기 운행정보",
-  "short_name": "승강기 정보",
-  "description": "교통약자를 위한 전국 지하철·철도·터미널·공항 승강기 실시간 운행 상태 안내",
+  "name": "승강기 신호등 — 서울교통공사 관할",
+  "short_name": "승강기 신호등",
+  "description": "서울교통공사 관할 1·2·3·4·5·6·7·8호선 승강기 실시간 운행 상태 안내 (교통약자 이동편의)",
   "start_url": "./subway-elevator-status.html",
   "scope": "./",
   "display": "standalone",
