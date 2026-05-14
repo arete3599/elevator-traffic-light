@@ -980,6 +980,8 @@ function mapTagoToItems(json) {
     const facility = facilityRaw ? String(facilityRaw) : '';
 
     // 좌표가 없으면 역명/역코드로 룩업 시도
+    // 정확도 우선 — random offset 제거 (이전 ±30m 오차로 외부 지도 부정확 원인)
+    // 같은 역의 다중 마커 겹침은 Leaflet markercluster가 자연스럽게 처리
     if ((isNaN(lat) || isNaN(lng)) && facility) {
       const lookupKey = normalizeStationName(facility);
       const coord = S.coordIndex[lookupKey]
@@ -988,8 +990,8 @@ function mapTagoToItems(json) {
                  || S.geocodeCache[lookupKey + '역']
                  || S.geocodeCache[lookupKey];
       if (coord) {
-        lat = coord.lat + (Math.random()-0.5)*0.0006;   // 같은 역 다중 마커 분산
-        lng = coord.lng + (Math.random()-0.5)*0.0008;
+        lat = coord.lat;
+        lng = coord.lng;
       }
     }
 
@@ -997,8 +999,8 @@ function mapTagoToItems(json) {
     const stnCode = pickField(d, ['STN_CD','stnCd','stationCode','STATN_ID','statnId','stinCd','stinId']);
     if ((isNaN(lat) || isNaN(lng)) && stnCode && S.coordIndex[stnCode]) {
       const coord = S.coordIndex[stnCode];
-      lat = coord.lat + (Math.random()-0.5)*0.0006;
-      lng = coord.lng + (Math.random()-0.5)*0.0008;
+      lat = coord.lat;
+      lng = coord.lng;
     }
 
     const statusRaw = pickField(d, ['opratSttus','status','operStatus','useYn','runStatus','USE_YN','USEYN','elvtrStts','elvtrStatus','operStts']) || '';
@@ -1878,10 +1880,12 @@ async function boot() {
   if (savedGeocode) { try { S.geocodeCache = JSON.parse(savedGeocode); } catch {} }
   // 좌표 인덱스 초기화 (FACILITIES + 지오코딩 캐시 결합)
   S.coordIndex = buildStationCoordIndex();
+  // 카카오 지오코딩 캐시는 데모 FACILITIES 테이블보다 정확도가 높으므로 우선시 (덮어쓰기)
+  // 이전: 신규 키만 추가 → FACILITIES의 부정확한 좌표가 외부 지도에서 다른 곳을 가리키는 원인
   Object.keys(S.geocodeCache).forEach(k => {
-    if (!S.coordIndex[k]) S.coordIndex[k] = S.geocodeCache[k];
+    S.coordIndex[k] = S.geocodeCache[k];
     const short = k.replace(/역$/, '');
-    if (short && !S.coordIndex[short]) S.coordIndex[short] = S.geocodeCache[k];
+    if (short) S.coordIndex[short] = S.geocodeCache[k];
   });
   initMap();
   bindSearch();
