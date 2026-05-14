@@ -459,13 +459,23 @@ const DATA_SOURCES = {
       // 모든 페이지를 단일 JSON으로 합치기
       const merged = { SeoulMetroFaciInfo: { row: allRows, list_total_count: totalCount } };
 
-      // 배포 환경(서버 키 사용) 또는 카카오 키 입력 시 일괄 지오코딩으로 좌표 캐시 채우기
+      // ① 캐시된 좌표는 즉시 coordIndex에 반영 (동기, 빠름)
+      applyGeocodeCacheToIndex(merged);
+
+      // ② 좌표 보유 항목으로 즉시 반환 → 사용자가 1~2초 내에 첫 결과 확인
+      const initialItems = mapTagoToItems(merged);
+
+      // ③ 백그라운드로 신규 지오코딩 시작 (await 없음 → fetch는 즉시 반환)
+      //    배치마다 S.data 갱신 + applyFilter()로 마커 점진 추가
       if (S.apiKeys.kakao || IS_HOSTED) {
-        try { await ensureGeocodeCache(merged); }
-        catch (e) { console.warn('[지오코딩] 일괄 처리 실패:', e.message); }
+        enrichGeocodeProgressively(merged)
+          .catch(e => console.warn('[점진 표시] 백그라운드 실패:', e.message));
       }
-      return mapTagoToItems(merged);
+
+      return initialItems;
     },
+    // 점진 표시 모드 — loadData가 토스트 메시지를 적절히 변경
+    isProgressive: true,
   },
 
   tago: {
@@ -821,6 +831,91 @@ async function ensureGeocodeCache(rawJson) {
   console.log(`[지오코딩] 완료: 신규 ${newCount}건, 캐시히트 ${hitCount}건 (${elapsed}초 소요)`);
 }
 
+// ────────────────────────────────────────────────────────────
+// 점진 표시 (Progressive Loading) 헬퍼 — 사용자가 첫 결과를 즉시 보고,
+// 백그라운드에서 추가 좌표가 채워질 때마다 마커가 늘어남
+// ────────────────────────────────────────────────────────────
+
+// 응답에서 unique 역명 Set 추출 (ensureGeocodeCache와 동일 로직)
+function extractUniqueQueries(rawJson) {
+  const items = findItemArray(rawJson);
+  const queries = new Set();
+  items.forEach(d => {
+    const stnNm = pickField(d, ['stinNm','STIN_NM','stnNm','STN_NM','stationName']) ||
+                  (S.kricStations && pickField(d, ['stinCd','STIN_CD','stnCd'])
+                    && S.kricStations[pickField(d, ['stinCd','STIN_CD','stnCd'])]?.nm);
+    if (stnNm) queries.add(`${stnNm}역`);
+  });
+  return queries;
+}
+
+// 캐시된 좌표를 coordIndex에 즉시 반영 (동기, ms 단위)
+function applyGeocodeCacheToIndex(rawJson) {
+  const queries = extractUniqueQueries(rawJson);
+  let hits = 0;
+  queries.forEach(q => {
+    if (S.geocodeCache[q]) {
+      S.coordIndex[q.replace(/역$/, '')] = S.geocodeCache[q];
+      S.coordIndex[q] = S.geocodeCache[q];
+      hits++;
+    }
+  });
+  console.log(`[점진 표시] 캐시 ${hits}건 즉시 반영 (총 ${queries.size}개 역명 중)`);
+}
+
+// 백그라운드에서 신규 지오코딩 → 배치마다 S.data 갱신 + 마커 점진 추가
+async function enrichGeocodeProgressively(rawJson) {
+  const queries = extractUniqueQueries(rawJson);
+  const newQueries = Array.from(queries).filter(q => !S.geocodeCache[q]);
+  if (newQueries.length === 0) {
+    console.log('[점진 표시] 신규 호출 없음 (모두 캐시됨)');
+    return;
+  }
+
+  const t0 = Date.now();
+  console.log(`[점진 표시] 백그라운드 시작 — 신규 ${newQueries.length}개 역명`);
+  const BATCH = 20;
+  let totalNew = 0;
+
+  for (let i = 0; i < newQueries.length; i += BATCH) {
+    const batch = newQueries.slice(i, i + BATCH);
+    const results = await Promise.allSettled(
+      batch.map(q => geocodeWithKakao(q, S.apiKeys.kakao))
+    );
+    let batchNew = 0;
+    results.forEach((r, k) => {
+      if (r.status === 'fulfilled' && r.value) {
+        const q = batch[k];
+        S.coordIndex[q.replace(/역$/, '')] = r.value;
+        S.coordIndex[q] = r.value;
+        batchNew++;
+      }
+    });
+    totalNew += batchNew;
+
+    // 배치당 신규 좌표가 있으면 화면 갱신
+    if (batchNew > 0) {
+      try {
+        const updated = mapTagoToItems(rawJson);
+        const before = (S.data || []).length;
+        if (updated.length !== before) {
+          S.data = updated;
+          applyFilter();
+          const delta = updated.length - before;
+          if (delta > 0) console.log(`[점진 표시] +${delta}건 → 총 ${updated.length}건 (배치 ${Math.floor(i/BATCH)+1}/${Math.ceil(newQueries.length/BATCH)})`);
+        }
+      } catch (e) {
+        console.warn('[점진 표시] 갱신 실패:', e.message);
+      }
+    }
+  }
+
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+  const finalCount = (S.data || []).length;
+  console.log(`[점진 표시] 완료: ${totalNew}건 신규 매칭, 최종 ${finalCount}건 (${elapsed}초)`);
+  try { showToast(`✓ 추가 ${totalNew}건 표시 완료 — 총 ${finalCount}건`); } catch {}
+}
+
 // 좌표 데이터셋 호출 — 역코드(STN_CD) 또는 역명(STN_NM) → {lat,lng} 매핑 구성
 async function fetchCoordDataset(apiKey, proxyBase) {
   const endpoint = S.coordEndpoint;
@@ -1121,8 +1216,14 @@ async function loadData(sourceKey) {
     S.currentSource = sourceKey;
     updateSourceBadge();
     applyFilter();
-    const skipMsg = S.lastSkipped > 0 ? ` (좌표 미상 ${S.lastSkipped}건 제외)` : '';
-    showToast(`✓ ${src.badge} · ${items.length}건 표시${skipMsg}`);
+    // 점진 표시 모드면 추가 로딩 안내, 일반 모드면 좌표 누락 안내
+    let tail;
+    if (src.isProgressive) {
+      tail = ' · 추가 좌표 로딩 중…';
+    } else {
+      tail = S.lastSkipped > 0 ? ` (좌표 미상 ${S.lastSkipped}건 제외)` : '';
+    }
+    showToast(`✓ ${src.badge} · 일단 ${items.length}건 표시${tail}`);
   } catch (e) {
     console.error('데이터 로드 실패:', e);
     const msg = e.message || String(e);

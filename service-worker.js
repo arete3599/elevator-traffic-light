@@ -8,7 +8,7 @@
  */
 
 // ⚠ 코드 변경 후 반드시 이 버전 번호를 올려야 사용자 PWA가 새 SW를 받습니다
-const CACHE_VERSION = 'v1.3.0';
+const CACHE_VERSION = 'v1.4.0';
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 const CDN_CACHE = `cdn-libs-${CACHE_VERSION}`;
 const TILE_CACHE = `osm-tiles-${CACHE_VERSION}`;
