@@ -1761,12 +1761,15 @@ function openSheet(item) {
     ? item.updatedAt.toLocaleString('ko-KR') : '갱신시각 미상';
   bodyHtml += `<div class="sheet-updated">최종 갱신: ${escapeHtml(updatedStr)}</div>`;
 
-  // 외부 지도 링크 — 시민이 익숙한 네이버/카카오 지도 앱으로 이동
-  // 좌표 + 시설명 동시 전달해서 모바일 앱과 웹 모두에서 정확하게 위치 표시
+  // 외부 지도 링크 — 좌표 기반 URL로 정확한 위치 보장 (검색 기반은 동명이인 매칭 위험)
   if (!isNaN(item.lat) && !isNaN(item.lng)) {
-    const q = encodeURIComponent(item.facility);
-    const naverUrl = `https://map.naver.com/p/search/${q}`;
-    const kakaoUrl = `https://map.kakao.com/link/search/${q}`;
+    // 시설명 정규화: "노원역(4)" → "노원역" 식으로 깔끔하게 (외부 지도 마커 라벨용)
+    const cleanName = normalizeStationName(item.facility) || item.facility;
+    const nameEnc = encodeURIComponent(cleanName);
+    // 카카오맵: link/map/{이름},{lat},{lng} — 정확한 좌표에 마커 + 이름 표시
+    const kakaoUrl = `https://map.kakao.com/link/map/${nameEnc},${item.lat},${item.lng}`;
+    // 네이버 지도: 좌표 기반 URL — 정확한 위치를 중심으로 이동
+    const naverUrl = `https://map.naver.com/p/?lng=${item.lng}&lat=${item.lat}&zoom=17`;
     bodyHtml += `<div class="ext-map-btns">
       <a href="${naverUrl}" target="_blank" rel="noopener noreferrer" class="ext-map-btn naver">🗺️ 네이버 지도</a>
       <a href="${kakaoUrl}" target="_blank" rel="noopener noreferrer" class="ext-map-btn kakao">🗺️ 카카오맵</a>
