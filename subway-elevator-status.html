@@ -157,10 +157,9 @@
   .sheet-fault-reason strong{font-weight:700;display:block;margin-bottom:3px;color:var(--fault)}
   .sheet-distance{display:inline-block;margin-top:10px;padding:4px 10px;background:rgba(25,118,210,.1);color:var(--primary);border-radius:12px;font-size:11px;font-weight:500}
   .sheet-updated{margin-top:12px;font-size:11px;color:var(--text-light);text-align:center}
-  .ext-map-btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-  .ext-map-btn{flex:1;min-width:120px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 12px;background:var(--primary);color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;transition:opacity .15s}
+  .ext-map-btns{display:flex;gap:8px;margin-top:14px}
+  .ext-map-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:12px 14px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700;transition:opacity .15s}
   .ext-map-btn:hover{opacity:.85}
-  .ext-map-btn.naver{background:#03c75a}
   .ext-map-btn.kakao{background:#fee500;color:#3a1d1d}
 
   .marker-pin{
@@ -270,7 +269,8 @@
   .modal-btn:disabled{opacity:.5;cursor:not-allowed}
 
   .leaflet-control-attribution{font-size:9px !important;opacity:.7}
-  .leaflet-control-zoom{margin-bottom:140px !important;margin-right:10px !important}
+  /* 줌 컨트롤 우상단 — 모바일에선 검색바·필터칩 아래에 위치하도록 top margin 130px */
+  .leaflet-control-zoom{margin-top:130px !important;margin-right:10px !important;margin-bottom:0 !important}
   .leaflet-control-zoom a{border-radius:6px !important;color:var(--text) !important}
 
   @media (min-width: 768px){
@@ -280,7 +280,8 @@
     .filter-chips{top:58px;left:16px;right:auto;width:340px}
     .bottombar{padding:10px 20px calc(10px + var(--safe-bottom))}
     .fab-locate{bottom:30px}
-    .leaflet-control-zoom{margin-bottom:80px !important}
+    /* 데스크톱에선 검색바가 좌측 width 340 → 우상단 줌 컨트롤은 안 겹침 */
+    .leaflet-control-zoom{margin-top:14px !important;margin-right:14px !important;margin-bottom:0 !important}
     .sheet{
       top:auto;left:16px;right:auto;bottom:80px;width:340px;
       max-height:60vh;border-radius:14px;
@@ -1596,7 +1597,8 @@ function initMap() {
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap', maxZoom: 19,
   }).addTo(S.map);
-  L.control.zoom({ position: 'bottomright' }).addTo(S.map);
+  // 줌 컨트롤 — 우상단 (이전: 우하단이 시설 시트와 겹쳐 정보 가림)
+  L.control.zoom({ position: 'topright' }).addTo(S.map);
   S.map.on('click', () => closeSheet());
 
   S.clusterGroup = L.markerClusterGroup({
@@ -1783,18 +1785,14 @@ function openSheet(item) {
     ? item.updatedAt.toLocaleString('ko-KR') : '갱신시각 미상';
   bodyHtml += `<div class="sheet-updated">최종 갱신: ${escapeHtml(updatedStr)}</div>`;
 
-  // 외부 지도 링크 — 좌표 기반 URL로 정확한 위치 보장 (검색 기반은 동명이인 매칭 위험)
+  // 외부 지도 링크 — 카카오맵만 사용 (네이버 지도는 좌표 URL이 정확한 위치 표시 안 됨)
+  // 카카오맵 link/map 형식은 좌표 + 이름 마커 정확히 표시 보장
   if (!isNaN(item.lat) && !isNaN(item.lng)) {
-    // 시설명 정규화: "노원역(4)" → "노원역" 식으로 깔끔하게 (외부 지도 마커 라벨용)
     const cleanName = normalizeStationName(item.facility) || item.facility;
     const nameEnc = encodeURIComponent(cleanName);
-    // 카카오맵: link/map/{이름},{lat},{lng} — 정확한 좌표에 마커 + 이름 표시
     const kakaoUrl = `https://map.kakao.com/link/map/${nameEnc},${item.lat},${item.lng}`;
-    // 네이버 지도: 좌표 기반 URL — 정확한 위치를 중심으로 이동
-    const naverUrl = `https://map.naver.com/p/?lng=${item.lng}&lat=${item.lat}&zoom=17`;
     bodyHtml += `<div class="ext-map-btns">
-      <a href="${naverUrl}" target="_blank" rel="noopener noreferrer" class="ext-map-btn naver">🗺️ 네이버 지도</a>
-      <a href="${kakaoUrl}" target="_blank" rel="noopener noreferrer" class="ext-map-btn kakao">🗺️ 카카오맵</a>
+      <a href="${kakaoUrl}" target="_blank" rel="noopener noreferrer" class="ext-map-btn kakao">🗺️ 카카오맵에서 보기</a>
     </div>`;
   }
 
