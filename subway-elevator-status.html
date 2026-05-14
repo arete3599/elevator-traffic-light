@@ -308,7 +308,7 @@
   <div id="map"></div>
 
   <div class="search-bar">
-    <input type="text" class="search-input" id="searchInput" placeholder="🔍 시설명·역명 검색 (엔터)" inputmode="search" enterkeyhint="search">
+    <input type="text" class="search-input" id="searchInput" placeholder="🔍 환승역은 '역이름 + N호선' (예: 창동역 4호선)" inputmode="search" enterkeyhint="search">
   </div>
 
   <div class="filter-chips">
@@ -797,16 +797,17 @@ async function geocodeWithKakao(query, kakaoKey) {
 
 // 응답에 등장한 모든 역명을 사전에 지오코딩하여 캐시 채우기
 // 성능 최적화: 순차 50ms 간격 → 병렬 배치(20개씩) 호출. 274개 → 약 5~10초로 단축
+// 키 형식: 호선 번호 포함 ("창동역 4호선") — 환승역도 정확 매칭
 async function ensureGeocodeCache(rawJson) {
   const t0 = Date.now();
   const items = findItemArray(rawJson);
   const uniqueQueries = new Set();
   items.forEach(d => {
-    // KRIC 스키마: stinNm + lnNm 조합 또는 STIN_CD로 룩업 후
     const stnNm = pickField(d, ['stinNm','STIN_NM','stnNm','STN_NM','stationName']) ||
                   (S.kricStations && pickField(d, ['stinCd','STIN_CD','stnCd'])
                     && S.kricStations[pickField(d, ['stinCd','STIN_CD','stnCd'])]?.nm);
-    if (stnNm) uniqueQueries.add(`${stnNm}역`);
+    const q = buildGeocodeQuery(stnNm);
+    if (q) uniqueQueries.add(q);
   });
 
   // 캐시 미보유 역명만 추출 (이미 캐시된 건 호출 스킵)
@@ -815,12 +816,9 @@ async function ensureGeocodeCache(rawJson) {
   const hitCount = allQueries.length - newQueries.length;
   console.log(`[지오코딩] 신규 ${newQueries.length}건 / 캐시 ${hitCount}건 보유 (총 ${allQueries.length}개 역명)`);
 
-  // 캐시 보유분은 즉시 coordIndex에 반영
+  // 캐시 보유분은 즉시 coordIndex에 반영 (호선 정보 포함 키)
   allQueries.forEach(q => {
-    if (S.geocodeCache[q]) {
-      S.coordIndex[q.replace(/역$/, '')] = S.geocodeCache[q];
-      S.coordIndex[q] = S.geocodeCache[q];
-    }
+    if (S.geocodeCache[q]) S.coordIndex[q] = S.geocodeCache[q];
   });
 
   // 신규는 병렬 배치 호출 (배치당 20개 동시, 카카오 한도 부담 없음)
@@ -833,9 +831,7 @@ async function ensureGeocodeCache(rawJson) {
     );
     results.forEach((r, k) => {
       if (r.status === 'fulfilled' && r.value) {
-        const q = batch[k];
-        S.coordIndex[q.replace(/역$/, '')] = r.value;
-        S.coordIndex[q] = r.value;
+        S.coordIndex[batch[k]] = r.value;
         newCount++;
       }
     });
@@ -850,7 +846,27 @@ async function ensureGeocodeCache(rawJson) {
 // 백그라운드에서 추가 좌표가 채워질 때마다 마커가 늘어남
 // ────────────────────────────────────────────────────────────
 
-// 응답에서 unique 역명 Set 추출 (ensureGeocodeCache와 동일 로직)
+// 역명에서 호선 번호 추출 — "창동역(4)" → "4", "서울역(1)" → "1"
+function extractLineNumber(name) {
+  if (!name) return null;
+  const m = String(name).match(/\((\d+)\)/);
+  return m ? m[1] : null;
+}
+
+// 카카오 검색용 query 생성 — 호선 번호가 있으면 "창동역 4호선", 없으면 "창동역"
+// 환승역의 호선별 정확한 좌표를 받기 위함 (이전: 호선 정보 없이 검색 → 첫 호선 좌표만 받음)
+function buildGeocodeQuery(stnNmRaw) {
+  if (!stnNmRaw) return null;
+  const lineNum = extractLineNumber(stnNmRaw);
+  // normalizeStationName은 괄호·호선 제거 → "창동역"
+  const cleanName = normalizeStationName(stnNmRaw);
+  if (!cleanName) return null;
+  // 끝에 "역"이 없으면 추가 (KRIC 데이터는 "역" 미포함 케이스)
+  const withYeok = cleanName.endsWith('역') ? cleanName : `${cleanName}역`;
+  return lineNum ? `${withYeok} ${lineNum}호선` : withYeok;
+}
+
+// 응답에서 unique 검색 query Set 추출 (ensureGeocodeCache와 동일 로직)
 function extractUniqueQueries(rawJson) {
   const items = findItemArray(rawJson);
   const queries = new Set();
@@ -858,19 +874,20 @@ function extractUniqueQueries(rawJson) {
     const stnNm = pickField(d, ['stinNm','STIN_NM','stnNm','STN_NM','stationName']) ||
                   (S.kricStations && pickField(d, ['stinCd','STIN_CD','stnCd'])
                     && S.kricStations[pickField(d, ['stinCd','STIN_CD','stnCd'])]?.nm);
-    if (stnNm) queries.add(`${stnNm}역`);
+    const q = buildGeocodeQuery(stnNm);
+    if (q) queries.add(q);
   });
   return queries;
 }
 
 // 캐시된 좌표를 coordIndex에 즉시 반영 (동기, ms 단위)
+// 키 형식: "창동역 4호선" (호선 정보 포함) — 환승역도 호선별로 정확 매칭
 function applyGeocodeCacheToIndex(rawJson) {
   const queries = extractUniqueQueries(rawJson);
   let hits = 0;
   queries.forEach(q => {
     if (S.geocodeCache[q]) {
-      S.coordIndex[q.replace(/역$/, '')] = S.geocodeCache[q];
-      S.coordIndex[q] = S.geocodeCache[q];
+      S.coordIndex[q] = S.geocodeCache[q];  // 호선 정보 포함 키
       hits++;
     }
   });
@@ -900,8 +917,7 @@ async function enrichGeocodeProgressively(rawJson) {
     results.forEach((r, k) => {
       if (r.status === 'fulfilled' && r.value) {
         const q = batch[k];
-        S.coordIndex[q.replace(/역$/, '')] = r.value;
-        S.coordIndex[q] = r.value;
+        S.coordIndex[q] = r.value;  // "창동역 4호선" 키 그대로
         batchNew++;
       }
     });
@@ -995,10 +1011,13 @@ function mapTagoToItems(json) {
 
     // 좌표가 없으면 역명/역코드로 룩업 시도
     // 정확도 우선 — random offset 제거 (이전 ±30m 오차로 외부 지도 부정확 원인)
-    // 같은 역의 다중 마커 겹침은 Leaflet markercluster가 자연스럽게 처리
+    // 호선 키 우선 — 환승역의 경우 "창동역 4호선" 키가 정확한 위치 보장
     if ((isNaN(lat) || isNaN(lng)) && facility) {
+      const lineKey = buildGeocodeQuery(facility);  // "창동역 4호선" or "창동역"
       const lookupKey = normalizeStationName(facility);
-      const coord = S.coordIndex[lookupKey]
+      const coord = (lineKey && S.coordIndex[lineKey])      // 1순위: 호선 정보 포함
+                 || (lineKey && S.geocodeCache[lineKey])
+                 || S.coordIndex[lookupKey]                  // 폴백: 호선 정보 없는 키
                  || S.coordIndex[lookupKey.replace(/역$/,'')]
                  || S.coordIndex[lookupKey + '역']
                  || S.geocodeCache[lookupKey + '역']
@@ -1170,8 +1189,8 @@ const FAULT_REASONS = ['문 개폐 센서 이상','안전장치 점검 중','정
 const STORAGE_KEY = 'elv_data_source';
 const STORAGE_KEYS = 'elv_data_keys';
 // 좌표 캐시 키 — 버전 suffix가 있으면 옛 잘못된 캐시는 자동 무시됨
-// v2 → v3 갱신: random offset이 적용된 부정확 캐시 무효화 (외부 지도 정확도 보장)
-const GEOCODE_CACHE_KEY = 'elv_geocode_cache_v3';
+// v3 → v4 갱신: 환승역의 호선별 좌표를 별도로 저장하는 새 키 체계 ("창동역 4호선")
+const GEOCODE_CACHE_KEY = 'elv_geocode_cache_v4';
 
 // 환경 자동 감지: 배포(Vercel 등 https/http 호스트) vs 로컬(file://·localhost·127.0.0.1)
 // 시민용 배포에서는 같은 도메인의 /api/* (Vercel Serverless) 사용, 로컬에서는 8080 포트의 proxy.py 사용
@@ -1809,6 +1828,12 @@ function closeSheet() {
 // 검색
 function bindSearch() {
   const input = document.getElementById('searchInput');
+  // 클릭(focus) 시 안내 placeholder를 숨겨 입력 화면 깔끔하게 — 사용자 입력 후 비우면 다시 표시
+  const origPlaceholder = input.placeholder;
+  input.addEventListener('focus', () => { input.placeholder = ''; });
+  input.addEventListener('blur', () => {
+    if (!input.value) input.placeholder = origPlaceholder;
+  });
   let timer = null;
   input.addEventListener('input', e => {
     S.search = e.target.value;
