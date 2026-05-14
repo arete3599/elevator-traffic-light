@@ -772,7 +772,9 @@ async function geocodeWithKakao(query, kakaoKey) {
 }
 
 // 응답에 등장한 모든 역명을 사전에 지오코딩하여 캐시 채우기
+// 성능 최적화: 순차 50ms 간격 → 병렬 배치(20개씩) 호출. 274개 → 약 5~10초로 단축
 async function ensureGeocodeCache(rawJson) {
+  const t0 = Date.now();
   const items = findItemArray(rawJson);
   const uniqueQueries = new Set();
   items.forEach(d => {
@@ -783,20 +785,40 @@ async function ensureGeocodeCache(rawJson) {
     if (stnNm) uniqueQueries.add(`${stnNm}역`);
   });
 
-  console.log(`[지오코딩] ${uniqueQueries.size}개 역명 지오코딩 시작 (캐시 ${Object.keys(S.geocodeCache).length}건 보유)`);
-  let newCount = 0, hitCount = 0;
-  for (const q of uniqueQueries) {
-    if (S.geocodeCache[q]) { hitCount++; continue; }
-    const coord = await geocodeWithKakao(q, S.apiKeys.kakao);
-    if (coord) {
-      S.coordIndex[q.replace(/역$/, '')] = coord;
-      S.coordIndex[q] = coord;
-      newCount++;
+  // 캐시 미보유 역명만 추출 (이미 캐시된 건 호출 스킵)
+  const allQueries = Array.from(uniqueQueries);
+  const newQueries = allQueries.filter(q => !S.geocodeCache[q]);
+  const hitCount = allQueries.length - newQueries.length;
+  console.log(`[지오코딩] 신규 ${newQueries.length}건 / 캐시 ${hitCount}건 보유 (총 ${allQueries.length}개 역명)`);
+
+  // 캐시 보유분은 즉시 coordIndex에 반영
+  allQueries.forEach(q => {
+    if (S.geocodeCache[q]) {
+      S.coordIndex[q.replace(/역$/, '')] = S.geocodeCache[q];
+      S.coordIndex[q] = S.geocodeCache[q];
     }
-    // 카카오 한도 안전을 위해 50ms 간격
-    await new Promise(r => setTimeout(r, 50));
+  });
+
+  // 신규는 병렬 배치 호출 (배치당 20개 동시, 카카오 한도 부담 없음)
+  const BATCH_SIZE = 20;
+  let newCount = 0;
+  for (let i = 0; i < newQueries.length; i += BATCH_SIZE) {
+    const batch = newQueries.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(q => geocodeWithKakao(q, S.apiKeys.kakao))
+    );
+    results.forEach((r, k) => {
+      if (r.status === 'fulfilled' && r.value) {
+        const q = batch[k];
+        S.coordIndex[q.replace(/역$/, '')] = r.value;
+        S.coordIndex[q] = r.value;
+        newCount++;
+      }
+    });
   }
-  console.log(`[지오코딩] 완료: 신규 ${newCount}건, 캐시히트 ${hitCount}건`);
+
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+  console.log(`[지오코딩] 완료: 신규 ${newCount}건, 캐시히트 ${hitCount}건 (${elapsed}초 소요)`);
 }
 
 // 좌표 데이터셋 호출 — 역코드(STN_CD) 또는 역명(STN_NM) → {lat,lng} 매핑 구성
